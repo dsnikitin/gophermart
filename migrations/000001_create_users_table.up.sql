@@ -1,0 +1,6 @@
+CREATE SCHEMA IF NOT EXISTS gophermart;
+
+CREATE TABLE IF NOT EXISTS gophermart.users(
+	login TEXT PRIMARY KEY,
+	password TEXT NOT NULL
+);
