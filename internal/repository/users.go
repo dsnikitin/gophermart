@@ -49,6 +49,10 @@ func (r *Users) Get(ctx context.Context, login string) (models.User, error) {
 
 	var user models.User
 	if err := row.Scan(&user.Login, &user.Password); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.User{}, errx.ErrNotFound
+		}
+
 		return models.User{}, errors.Wrap(err, "scan user row")
 	}
 

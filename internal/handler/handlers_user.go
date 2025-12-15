@@ -96,6 +96,8 @@ func (h *Handler) setAuthCookie(w http.ResponseWriter, login string) error {
 
 	cookie := &http.Cookie{
 		HttpOnly: true,
+		SameSite: http.SameSiteStrictMode,
+		Secure:   h.cfg.Log.EnvType == logger.ProdEnv,
 		Name:     h.cfg.Auth.CookieName,
 		Value:    authToken,
 	}
