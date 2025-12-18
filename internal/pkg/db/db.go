@@ -18,7 +18,7 @@ type Config struct {
 	MigrationsPath string `env:"DATABASE_MIGRATIONS_PATH"`
 }
 
-func InitPgDB(cfg *Config) (*pgxpool.Pool, error) {
+func Connect(cfg *Config) (*pgxpool.Pool, error) {
 	pool, err := pgxpool.New(context.Background(), cfg.URI)
 	if err != nil {
 		return nil, errors.Wrap(err, "new pgxpool")
@@ -33,7 +33,7 @@ func InitPgDB(cfg *Config) (*pgxpool.Pool, error) {
 	}
 
 	logger.Log.Infow(
-		"Successfuly connected to database",
+		"Successfuly connected to PostgresDB",
 		"name", pool.Config().ConnConfig.Database,
 		"host", pool.Config().ConnConfig.Host,
 		"port", pool.Config().ConnConfig.Port,

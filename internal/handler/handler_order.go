@@ -13,29 +13,37 @@ import (
 )
 
 type OrderService interface {
-	Upload(ctx context.Context, login, orderNumber string) error
-	GetByUser(ctx context.Context, login string) ([]models.Order, error)
+	UploadOrder(ctx context.Context, login, orderNumber string) error
+	GetOrders(ctx context.Context, login string) ([]models.OrderResponse, error)
 }
 
-func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
+type OrderHandler struct {
+	service OrderService
+}
+
+func NewOrder(service OrderService) *OrderHandler {
+	return &OrderHandler{service: service}
+}
+
+func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	login := r.Header.Get("x-user-login")
 
-	orderNumber, err := io.ReadAll(r.Body)
+	numberBytes, err := io.ReadAll(r.Body)
 	if err != nil {
+		err = errors.Wrap(err, "read all")
 		logger.Log.Errorw("Failed to read create order request body", "error", err.Error())
 		http.Error(w, errx.ErrInternalServer.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if len(orderNumber) == 0 {
+	if len(numberBytes) == 0 {
 		http.Error(w, "empty request body", http.StatusBadRequest)
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/plain")
-
-	if err := h.order.Upload(r.Context(), login, string(orderNumber)); err != nil {
-		err := errors.Wrap(err, "order upload")
+	number := string(numberBytes)
+	if err = h.service.UploadOrder(r.Context(), login, number); err != nil {
+		err = errors.Wrap(err, "upload order")
 
 		switch {
 		case errors.Is(err, errx.ErrUserOrderExists):
@@ -43,10 +51,10 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, errx.ErrAlreadyExists):
 			w.WriteHeader(http.StatusConflict)
 		case errors.Is(err, errx.ErrInvalidOrderNumber):
-			logger.Log.Infow("Failed to create order", "user", login, "number", string(orderNumber), "error", err.Error())
+			logger.Log.Infow("Failed to create order", "user", login, "number", number, "error", err.Error())
 			http.Error(w, errx.ErrInvalidOrderNumber.Error(), http.StatusUnprocessableEntity)
 		default:
-			logger.Log.Errorw("Failed to create order", "user", login, "number", string(orderNumber), "error", err.Error())
+			logger.Log.Errorw("Failed to create order", "user", login, "number", number, "error", err.Error())
 			http.Error(w, errx.ErrInternalServer.Error(), http.StatusInternalServerError)
 		}
 
@@ -56,26 +64,27 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusAccepted)
 }
 
-func (h *Handler) GetOrders(w http.ResponseWriter, r *http.Request) {
+func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
 	login := r.Header.Get("x-user-login")
 
-	orders, err := h.order.GetByUser(r.Context(), login)
+	orders, err := h.service.GetOrders(r.Context(), login)
 	if err != nil {
-		logger.Log.Errorw("Failed to get user orders", "user", login, "error", err.Error())
+		err = errors.Wrap(err, "get orders")
+		logger.Log.Errorw("Failed to get orders", "user", login, "error", err.Error())
 		http.Error(w, errx.ErrInternalServer.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
 
 	if len(orders) == 0 {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(orders); err != nil {
-		logger.Log.Errorw("Failed to encode user orders response", "error", err)
-		return
+
+	if err = json.NewEncoder(w).Encode(orders); err != nil {
+		err = errors.Wrap(err, "encode")
+		logger.Log.Errorw("Failed to encode user orders response", "error", err.Error())
 	}
 }

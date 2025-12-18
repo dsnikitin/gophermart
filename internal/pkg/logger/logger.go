@@ -18,7 +18,7 @@ type Config struct {
 
 var Log = zap.Must(zap.NewDevelopment()).Sugar()
 
-func Init(cfg *Config) error {
+func Setup(cfg *Config) error {
 	lvl, err := zap.ParseAtomicLevel(cfg.Lvl)
 	if err != nil {
 		return errors.Wrap(err, "parse level")

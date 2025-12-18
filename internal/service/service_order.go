@@ -1,4 +1,4 @@
-package usecase
+package service
 
 import (
 	"context"
@@ -11,24 +11,24 @@ import (
 )
 
 type OrderRepository interface {
-	UploadOrder(ctx context.Context, newOrder models.Order) (models.Order, error)
-	GetUserOrders(ctx context.Context, login string) ([]models.Order, error)
+	UploadOrder(ctx context.Context, newOrder models.OrderDB) (*models.OrderDB, error)
+	GetOrders(ctx context.Context, login string) ([]*models.OrderDB, error)
 }
 
-type Order struct {
+type OrderService struct {
 	r OrderRepository
 }
 
-func NewOrder(r OrderRepository) *Order {
-	return &Order{r: r}
+func NewOrder(r OrderRepository) *OrderService {
+	return &OrderService{r: r}
 }
 
-func (s *Order) Upload(ctx context.Context, login, number string) error {
+func (s *OrderService) UploadOrder(ctx context.Context, login, number string) error {
 	if err := checkNumber(number); err != nil {
 		return errors.Wrap(err, "check number")
 	}
 
-	newOrder := models.Order{
+	newOrder := models.OrderDB{
 		Number:     number,
 		Status:     status.New,
 		UploadedAt: time.Now().UTC(),
@@ -51,8 +51,18 @@ func (s *Order) Upload(ctx context.Context, login, number string) error {
 	return nil
 }
 
-func (s *Order) GetByUser(ctx context.Context, login string) ([]models.Order, error) {
-	return s.r.GetUserOrders(ctx, login)
+func (s *OrderService) GetOrders(ctx context.Context, login string) ([]models.OrderResponse, error) {
+	orders, err := s.r.GetOrders(ctx, login)
+	if err != nil {
+		return nil, errors.Wrap(err, "get orders")
+	}
+
+	res := make([]models.OrderResponse, 0, len(orders))
+	for _, o := range orders {
+		res = append(res, o.ToOrderResponse())
+	}
+
+	return res, nil
 }
 
 func checkNumber(number string) error {

@@ -9,4 +9,5 @@ var (
 	ErrInvalidOrderNumber = errors.New("invalid order number")
 	ErrInvalidPassword    = errors.New("invalid password")
 	ErrNotFound           = errors.New("not found")
+	ErrInsufficientFunds  = errors.New("insufficient funds")
 )

@@ -4,21 +4,22 @@ import (
 	"github.com/dsnikitin/gophermart/internal/config"
 )
 
-type Service interface {
-	UserService
-	OrderService
-}
-
 type Handler struct {
-	cfg   *config.Config
-	user  UserService
-	order OrderService
+	User    *UserHandler
+	Order   *OrderHandler
+	Balance *BalanceHandler
 }
 
-func New(cfg *config.Config, s Service) *Handler {
+type Service struct {
+	User    UserService
+	Order   OrderService
+	Balance BalanceService
+}
+
+func New(cfg *config.Config, s *Service) *Handler {
 	return &Handler{
-		cfg:   cfg,
-		user:  s,
-		order: s,
+		User:    NewUser(cfg, s.User),
+		Order:   NewOrder(s.Order),
+		Balance: NewBalance(s.Balance),
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/dsnikitin/gophermart/internal/config"
 	"github.com/dsnikitin/gophermart/internal/models"
 	"github.com/dsnikitin/gophermart/internal/pkg/auth"
 	"github.com/dsnikitin/gophermart/internal/pkg/errx"
@@ -14,14 +15,24 @@ import (
 )
 
 type UserService interface {
-	Register(ctx context.Context, login, password string) error
-	Login(ctx context.Context, login, password string) error
+	Register(ctx context.Context, req models.RegisterRequest) error
+	Login(ctx context.Context, req models.LoginRequest) error
 }
 
-func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
-	var req models.AuthRequest
+type UserHandler struct {
+	cfg     *config.Config
+	service UserService
+}
+
+func NewUser(cfg *config.Config, service UserService) *UserHandler {
+	return &UserHandler{cfg: cfg, service: service}
+}
+
+func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
+	var req models.RegisterRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		logger.Log.Errorw("Failed to decode register request", "error", err.Error())
+		err = errors.Wrap(err, "decode")
+		logger.Log.Errorw("Failed to decode register request body", "error", err.Error())
 		http.Error(w, errx.ErrInternalServer.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -31,9 +42,10 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Type", "text/plain")
 
-	if err := h.user.Register(r.Context(), req.Login, req.Password); err != nil {
+	if err := h.service.Register(r.Context(), req); err != nil {
+		err = errors.Wrap(err, "register")
 		if !errors.Is(err, errx.ErrAlreadyExists) {
 			logger.Log.Errorw("Failed to register user", "user", req.Login, "error", err.Error())
 			http.Error(w, errx.ErrInternalServer.Error(), http.StatusInternalServerError)
@@ -45,7 +57,8 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.setAuthCookie(w, req.Login); err != nil {
-		logger.Log.Errorw("Failed to set aut cookie after registration", "user", req.Login, "error", err.Error())
+		err = errors.Wrap(err, "set auth cookie")
+		logger.Log.Errorw("Failed to set auth cookie after registration", "user", req.Login, "error", err.Error())
 		http.Error(w, errx.ErrInternalServer.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -53,23 +66,25 @@ func (h *Handler) Register(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
-	var req models.AuthRequest
+func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
+	var req models.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		logger.Log.Errorw("Failed to decode login request", "error", err.Error())
+		err = errors.Wrap(err, "decode")
+		logger.Log.Errorw("Failed to decode login request body", "error", err.Error())
 		http.Error(w, errx.ErrInternalServer.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-
 	if err := req.Validate(); err != nil {
-		w.WriteHeader(http.StatusUnauthorized)
+		w.WriteHeader(http.StatusBadRequest)
 		return
 	}
 
-	if err := h.user.Login(r.Context(), req.Login, req.Password); err != nil {
-		if !errors.Is(err, errx.ErrNotFound) {
+	w.Header().Set("Content-Type", "text/plain")
+
+	if err := h.service.Login(r.Context(), req); err != nil {
+		err = errors.Wrap(err, "login")
+		if !errors.Is(err, errx.ErrNotFound) && !errors.Is(err, errx.ErrInvalidPassword) {
 			logger.Log.Errorw("Failed to login user", "user", req.Login, "error", err.Error())
 			http.Error(w, errx.ErrInternalServer.Error(), http.StatusInternalServerError)
 			return
@@ -80,6 +95,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.setAuthCookie(w, req.Login); err != nil {
+		err = errors.Wrap(err, "set auth cookie")
 		logger.Log.Errorw("Failed to set aut cookie after login", "user", req.Login, "error", err.Error())
 		http.Error(w, errx.ErrInternalServer.Error(), http.StatusInternalServerError)
 		return
@@ -88,7 +104,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 }
 
-func (h *Handler) setAuthCookie(w http.ResponseWriter, login string) error {
+func (h *UserHandler) setAuthCookie(w http.ResponseWriter, login string) error {
 	authToken, err := auth.CreateToken(h.cfg.Auth, login)
 	if err != nil {
 		return errors.Wrap(err, "create token")

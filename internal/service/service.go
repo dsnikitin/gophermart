@@ -1,20 +1,22 @@
 package service
 
-import "github.com/dsnikitin/gophermart/internal/service/usecase"
-
-type Repository interface {
-	usecase.UserRepository
-	usecase.OrderRepository
-}
-
 type Service struct {
-	*usecase.User
-	*usecase.Order
+	User    *UserService
+	Order   *OrderService
+	Balance *BalanceService
 }
 
-func New(repo Repository) *Service {
+type Repository struct {
+	User       UserRepository
+	Order      OrderRepository
+	Balance    BalanceRepository
+	TxProvider TransactionProvider
+}
+
+func New(r *Repository) *Service {
 	return &Service{
-		User:  usecase.NewUser(repo),
-		Order: usecase.NewOrder(repo),
+		User:    NewUser(r.User),
+		Order:   NewOrder(r.Order),
+		Balance: NewBalance(r.Balance, r.TxProvider),
 	}
 }

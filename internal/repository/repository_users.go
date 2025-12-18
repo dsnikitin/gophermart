@@ -13,21 +13,21 @@ import (
 	"github.com/pkg/errors"
 )
 
-type Users struct {
-	db *pgxpool.Pool
+type User struct {
+	baseRepo
 }
 
-func NewUsers(db *pgxpool.Pool) *Users {
-	return &Users{db: db}
+func NewUser(db *pgxpool.Pool) *User {
+	return &User{baseRepo{db: db}}
 }
 
-const userCreateSQL = `
+const createUserSQL = `
 	INSERT INTO gophermart.users(login, password)
 	VALUES (@login, @password)
 `
 
-func (r *Users) Create(ctx context.Context, login, password string) error {
-	_, err := r.db.Exec(ctx, userCreateSQL, pgx.NamedArgs{"login": login, "password": password})
+func (r *User) CreateUser(ctx context.Context, user models.User) error {
+	_, err := r.exec(ctx, createUserSQL, pgx.NamedArgs{"login": user.Login, "password": user.Password})
 	if err != nil {
 		var pgErr *pgconn.PgError
 		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
@@ -35,25 +35,25 @@ func (r *Users) Create(ctx context.Context, login, password string) error {
 		}
 	}
 
-	return errors.Wrap(err, "exec")
+	return nil
 }
 
-const userGetSQL = `
+const getUserSQL = `
 	SELECT login, password
 	FROM gophermart.users
 	WHERE login = @login
 `
 
-func (r *Users) Get(ctx context.Context, login string) (models.User, error) {
-	row := r.db.QueryRow(ctx, userGetSQL, pgx.NamedArgs{"login": login})
+func (r *User) GetUser(ctx context.Context, login string) (models.User, error) {
+	row := r.queryRow(ctx, getUserSQL, pgx.NamedArgs{"login": login})
 
 	var user models.User
-	if err := row.Scan(&user.Login, &user.Password); err != nil {
+	if err := row.Scan(user.ScanFields()...); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
 			return models.User{}, errx.ErrNotFound
 		}
 
-		return models.User{}, errors.Wrap(err, "scan user row")
+		return models.User{}, errors.Wrap(err, "scan user")
 	}
 
 	return user, nil
