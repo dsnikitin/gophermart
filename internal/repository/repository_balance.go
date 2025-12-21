@@ -4,20 +4,17 @@ import (
 	"context"
 
 	"github.com/dsnikitin/gophermart/internal/models"
-	"github.com/dsnikitin/gophermart/internal/pkg/errx"
-	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
 )
 
-type Balance struct {
+type BalanceRepository struct {
 	*baseRepo
 }
 
-func NewBalance(db *pgxpool.Pool) *Balance {
-	return &Balance{&baseRepo{db: db}}
+func NewBalance(db *pgxpool.Pool) *BalanceRepository {
+	return &BalanceRepository{&baseRepo{db: db}}
 }
 
 const getBalanceSQL = `
@@ -35,34 +32,28 @@ const getBalanceSQL = `
 	FROM accrued, withdrawn
 `
 
-func (r *Balance) GetBalance(ctx context.Context, login string) (*models.BalanceDB, error) {
+func (r *BalanceRepository) GetBalance(ctx context.Context, login string) (models.Balance, error) {
 	row := r.queryRow(ctx, getBalanceSQL, pgx.NamedArgs{"login": login})
 
-	var balance models.BalanceDB
+	var balance models.Balance
 	if err := row.Scan(balance.ScanFields()...); err != nil {
-		return nil, errors.Wrap(err, "scan balance")
+		return models.Balance{}, errors.Wrap(err, "scan balance")
 	}
 
-	return &balance, nil
+	return balance, nil
 }
 
 const createWithdrawalSQL = `
-	INSERT INTO gophermart.withdrawals(order_number, user_login, amount, processed_at)
-	VALUES(@orderNumber, @userLogin, @amount, @processedAt)
+	INSERT INTO gophermart.withdrawals(order_number, user_login, amount)
+	VALUES(@orderNumber, @userLogin, @amount)
 `
 
-func (r *Balance) CreatWithdrawal(ctx context.Context, login string, withdrawal models.WithdrawalDB) error {
+func (r *BalanceRepository) CreatWithdrawal(ctx context.Context, login, orderNumber string, sum float64) error {
 	_, err := r.exec(ctx, createWithdrawalSQL, pgx.NamedArgs{
-		"orderNumber": withdrawal.OrderNumber,
+		"orderNumber": orderNumber,
 		"userLogin":   login,
-		"amount":      withdrawal.Amount,
-		"processedAt": withdrawal.ProcessedAt,
+		"amount":      sum,
 	})
-
-	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-		return errx.ErrAlreadyExists
-	}
 
 	return errors.Wrap(err, "exec")
 }
@@ -73,21 +64,21 @@ const getWithdrawalsSQL = `
 	WHERE user_login = @login
 `
 
-func (r *Balance) GetWithdrawals(ctx context.Context, login string) ([]*models.WithdrawalDB, error) {
+func (r *BalanceRepository) GetWithdrawals(ctx context.Context, login string) ([]models.Withdrawal, error) {
 	rows, err := r.query(ctx, getWithdrawalsSQL, pgx.NamedArgs{"login": login})
 	if err != nil {
 		return nil, errors.Wrap(err, "query")
 	}
 	defer rows.Close()
 
-	var withdrawals []*models.WithdrawalDB
+	var withdrawals []models.Withdrawal
 	for rows.Next() {
-		var w models.WithdrawalDB
+		var w models.Withdrawal
 		if err := rows.Scan(w.ScanFields()...); err != nil {
 			return nil, errors.Wrap(err, "scan withdrawal")
 		}
 
-		withdrawals = append(withdrawals, &w)
+		withdrawals = append(withdrawals, w)
 	}
 
 	if err = rows.Err(); err != nil {
@@ -97,31 +88,41 @@ func (r *Balance) GetWithdrawals(ctx context.Context, login string) ([]*models.W
 	return withdrawals, nil
 }
 
-const lockUserSQL = `
-	SELECT 1
-	FROM gophermart.users
-	WHERE user_login = @login
-	FOR UPDATE
+// const lockUserSQL = `
+// 	SELECT 1
+// 	FROM gophermart.users
+// 	WHERE user_login = @login
+// 	FOR UPDATE
+// `
+
+// func (r *BalanceRepository) LockUser(ctx context.Context, login string) error {
+// 	row := r.queryRow(ctx, lockUserSQL, pgx.NamedArgs{"login": login})
+
+// 	var locked int
+// 	if err := row.Scan(&locked); err != nil {
+// 		if errors.Is(err, pgx.ErrNoRows) {
+// 			return errx.ErrNotFound
+// 		}
+
+// 		return errors.Wrap(err, "scan user locked")
+// 	}
+
+// 	return nil
+// }
+
+const advisoryLockSQL = `
+    SELECT pg_advisory_xact_lock(hashtext(@login))
 `
 
-func (r *Balance) LockUser(ctx context.Context, login string) error {
-	row := r.queryRow(ctx, lockUserSQL, pgx.NamedArgs{"login": login})
-
-	var locked int
-	if err := row.Scan(&locked); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return errx.ErrNotFound
-		}
-
-		return errors.Wrap(err, "scan user locked")
-	}
-
-	return nil
+func (r *BalanceRepository) LockBalance(ctx context.Context, login string) error {
+	// var _ int8
+	_, err := r.exec(ctx, advisoryLockSQL, pgx.NamedArgs{"login": login})
+	return errors.Wrap(err, "exec")
 }
 
-func (r *Balance) DoTx(ctx context.Context, fn func(*Balance) error) error {
+func (r *BalanceRepository) DoTx(ctx context.Context, fn func(*BalanceRepository) error) error {
 	return r.baseRepo.doTx(ctx, func(brTx *baseRepo) error {
-		balanceTx := &Balance{baseRepo: brTx}
+		balanceTx := &BalanceRepository{baseRepo: brTx}
 		return fn(balanceTx)
 	})
 }

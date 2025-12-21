@@ -4,52 +4,58 @@ import (
 	"context"
 
 	"github.com/dsnikitin/gophermart/internal/models"
+	"github.com/dsnikitin/gophermart/internal/pkg/errx"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
 )
 
-type Order struct {
+type OrderRepository struct {
 	baseRepo
 }
 
-func NewOrder(db *pgxpool.Pool) *Order {
-	return &Order{baseRepo{db: db}}
+func NewOrder(db *pgxpool.Pool) *OrderRepository {
+	return &OrderRepository{baseRepo{db: db}}
 }
 
 const uploadOrderSQL = `
-	INSERT INTO gophermart.orders(number, status, uploaded_at, accrual, user_login)
-	VALUES(@number, @status, @uploadedAt, @accrual, @login)
-	ON CONFLICT(number) DO UPDATE
-	SET number = @number
-	RETURNING number, status, uploaded_at, accrual, user_login
+	INSERT INTO gophermart.orders(number, user_login)
+	VALUES(@number, @login)
 `
 
-func (r *Order) UploadOrder(ctx context.Context, newOrder models.OrderDB) (*models.OrderDB, error) {
-	tx, err := r.db.Begin(ctx)
+func (r *OrderRepository) UploadOrder(ctx context.Context, login, number string) error {
+	_, err := r.exec(ctx, uploadOrderSQL, pgx.NamedArgs{"number": number, "login": login})
 	if err != nil {
-		return nil, errors.Wrap(err, "begin tx")
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+			return errx.ErrAlreadyExists
+		}
 	}
-	defer tx.Rollback(ctx)
 
-	row := tx.QueryRow(ctx, uploadOrderSQL, pgx.NamedArgs{
-		"number":     newOrder.Number,
-		"status":     newOrder.Status,
-		"uploadedAt": newOrder.UploadedAt,
-		"accrual":    newOrder.Accrual,
-		"login":      newOrder.UserLogin,
-	})
+	return nil
+}
 
-	var order models.OrderDB
+const getOrderSQL = `
+	SELECT number, status, uploaded_at, accrual, user_login
+	FROM gophermart.orders
+	WHERE number = @number
+`
+
+func (r *OrderRepository) GetOrder(ctx context.Context, number string) (models.Order, error) {
+	row := r.queryRow(ctx, getOrderSQL, pgx.NamedArgs{"number": number})
+
+	var order models.Order
 	if err := row.Scan(order.ScanFields()...); err != nil {
-		return nil, errors.Wrap(err, "scan order")
+		if errors.Is(err, pgx.ErrNoRows) {
+			return models.Order{}, errx.ErrNotFound
+		}
+
+		return models.Order{}, errors.Wrap(err, "scan order")
 	}
 
-	if err = tx.Commit(ctx); err != nil {
-		return nil, errors.Wrap(err, "commit tx")
-	}
-
-	return &order, nil
+	return order, nil
 }
 
 const getOrdersSQL = `
@@ -59,21 +65,21 @@ const getOrdersSQL = `
 	ORDER BY uploaded_at DESC
 `
 
-func (r *Order) GetOrders(ctx context.Context, login string) ([]*models.OrderDB, error) {
+func (r *OrderRepository) GetOrders(ctx context.Context, login string) ([]models.Order, error) {
 	rows, err := r.query(ctx, getOrdersSQL, pgx.NamedArgs{"login": login})
 	if err != nil {
 		return nil, errors.Wrap(err, "query")
 	}
 	defer rows.Close()
 
-	var orders []*models.OrderDB
+	var orders []models.Order
 	for rows.Next() {
-		var order models.OrderDB
+		var order models.Order
 		if err := rows.Scan(order.ScanFields()...); err != nil {
 			return nil, errors.Wrap(err, "scan order")
 		}
 
-		orders = append(orders, &order)
+		orders = append(orders, order)
 	}
 
 	if err = rows.Err(); err != nil {

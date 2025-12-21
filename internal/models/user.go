@@ -19,8 +19,8 @@ type RegisterRequest struct {
 	User
 }
 
-func (m *RegisterRequest) Validate() error {
-	return validation.ValidateStruct(m,
+func (m RegisterRequest) Validate() error {
+	return validation.ValidateStruct(&m,
 		validation.Field(&m.Login, validation.By(func(any) error {
 			return validationx.ValidateLogin(m.Login)
 		})),
@@ -34,8 +34,8 @@ type LoginRequest struct {
 	User
 }
 
-func (m *LoginRequest) Validate() error {
-	return validation.ValidateStruct(m,
+func (m LoginRequest) Validate() error {
+	return validation.ValidateStruct(&m,
 		validation.Field(&m.Login, validation.Required),
 		validation.Field(&m.Password, validation.Required),
 	)

@@ -22,7 +22,7 @@ func initRouter(cfg *config.Config, h *handler.Handler) *chi.Mux {
 			r.Use(middleware.Auth(cfg.Auth))
 
 			r.Get("/orders", http.HandlerFunc(h.Order.GetOrders))
-			r.Post("/orders", http.HandlerFunc(h.Order.CreateOrder))
+			r.Post("/orders", http.HandlerFunc(h.Order.UploadOrder))
 			r.Get("/balance", http.HandlerFunc(h.Balance.GetBalance))
 			r.Post("/balance/withdraw", http.HandlerFunc(h.Balance.Withdraw))
 			r.Get("/withdrawals", http.HandlerFunc(h.Balance.GetWithdrawals))

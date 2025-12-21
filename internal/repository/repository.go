@@ -11,9 +11,9 @@ import (
 )
 
 type Repository struct {
-	User    *User
-	Order   *Order
-	Balance *Balance
+	User    *UserRepository
+	Order   *OrderRepository
+	Balance *BalanceRepository
 }
 
 func New(db *pgxpool.Pool) *Repository {

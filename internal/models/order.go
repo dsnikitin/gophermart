@@ -1,35 +1,33 @@
 package models
 
 import (
+	"encoding/json"
 	"time"
 
 	"github.com/dsnikitin/gophermart/internal/pkg/consts/status"
 )
 
-type OrderDB struct {
-	Number     string
-	Status     status.OrderStatus
-	UploadedAt time.Time
-	Accrual    int64
-	UserLogin  string
+type Order struct {
+	Number     string             `json:"number"`
+	Status     status.OrderStatus `json:"status"`
+	UploadedAt time.Time          `json:"uploaded_at"`
+	Accrual    float64            `json:"accrual,omitempty"`
+	UserLogin  string             `json:"-"`
 }
 
-func (m *OrderDB) ScanFields() []any {
+func (m *Order) ScanFields() []any {
 	return []any{&m.Number, &m.Status, &m.UploadedAt, &m.Accrual, &m.UserLogin}
 }
 
-func (m *OrderDB) ToOrderResponse() OrderResponse {
-	return OrderResponse{
-		Number:     m.Number,
-		Status:     m.Status,
-		UploadedAt: m.UploadedAt.Truncate(time.Second),
-		Accrual:    float64(m.Accrual / 100),
+func (r Order) MarshalJSON() ([]byte, error) {
+	type Alias Order
+	resp := &struct {
+		Alias
+		UploadedAt string `json:"uploaded_at"`
+	}{
+		Alias:      Alias(r),
+		UploadedAt: r.UploadedAt.Truncate(time.Second).Format(time.RFC3339),
 	}
-}
 
-type OrderResponse struct {
-	Number     string             `json:"number"`
-	Status     status.OrderStatus `json:"status"`
-	UploadedAt time.Time          `json:"uploaded_at"` // с точностью до секунд
-	Accrual    float64            `json:"accrual,omitempty"`
+	return json.Marshal(resp)
 }

@@ -42,8 +42,6 @@ func (h *UserHandler) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "text/plain")
-
 	if err := h.service.Register(r.Context(), req); err != nil {
 		err = errors.Wrap(err, "register")
 		if !errors.Is(err, errx.ErrAlreadyExists) {
@@ -76,11 +74,9 @@ func (h *UserHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := req.Validate(); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-
-	w.Header().Set("Content-Type", "text/plain")
 
 	if err := h.service.Login(r.Context(), req); err != nil {
 		err = errors.Wrap(err, "login")
@@ -113,7 +109,7 @@ func (h *UserHandler) setAuthCookie(w http.ResponseWriter, login string) error {
 	cookie := &http.Cookie{
 		HttpOnly: true,
 		SameSite: http.SameSiteStrictMode,
-		Secure:   h.cfg.Log.EnvType == logger.ProdEnv,
+		Secure:   true,
 		Name:     h.cfg.Auth.CookieName,
 		Value:    authToken,
 	}

@@ -2,21 +2,22 @@ package service
 
 import (
 	"context"
-	"time"
 
 	"github.com/dsnikitin/gophermart/internal/models"
-	"github.com/dsnikitin/gophermart/internal/pkg/consts/status"
+	"github.com/dsnikitin/gophermart/internal/pkg/accrualer"
 	"github.com/dsnikitin/gophermart/internal/pkg/errx"
 	"github.com/pkg/errors"
 )
 
 type OrderRepository interface {
-	UploadOrder(ctx context.Context, newOrder models.OrderDB) (*models.OrderDB, error)
-	GetOrders(ctx context.Context, login string) ([]*models.OrderDB, error)
+	UploadOrder(ctx context.Context, login, number string) error
+	GetOrder(ctx context.Context, number string) (models.Order, error)
+	GetOrders(ctx context.Context, login string) ([]models.Order, error)
 }
 
 type OrderService struct {
-	r OrderRepository
+	r         OrderRepository
+	accrualer *accrualer.Accrualer
 }
 
 func NewOrder(r OrderRepository) *OrderService {
@@ -28,41 +29,28 @@ func (s *OrderService) UploadOrder(ctx context.Context, login, number string) er
 		return errors.Wrap(err, "check number")
 	}
 
-	newOrder := models.OrderDB{
-		Number:     number,
-		Status:     status.New,
-		UploadedAt: time.Now().UTC(),
-		UserLogin:  login,
-	}
+	if err := s.r.UploadOrder(ctx, login, number); err != nil {
+		if !errors.Is(err, errx.ErrAlreadyExists) {
+			return errors.Wrap(err, "upload order")
+		}
 
-	order, err := s.r.UploadOrder(ctx, newOrder)
-	if err != nil {
-		return errors.Wrap(err, "upload order")
-	}
+		order, err := s.r.GetOrder(ctx, number)
+		if err != nil {
+			return errors.Wrap(err, "get order")
+		}
 
-	if order.UserLogin != login {
+		if order.UserLogin == login {
+			return errx.ErrAlreadyAccepted
+		}
+
 		return errx.ErrAlreadyExists
-	}
-
-	if order.UploadedAt != newOrder.UploadedAt {
-		return errx.ErrUserOrderExists
 	}
 
 	return nil
 }
 
-func (s *OrderService) GetOrders(ctx context.Context, login string) ([]models.OrderResponse, error) {
-	orders, err := s.r.GetOrders(ctx, login)
-	if err != nil {
-		return nil, errors.Wrap(err, "get orders")
-	}
-
-	res := make([]models.OrderResponse, 0, len(orders))
-	for _, o := range orders {
-		res = append(res, o.ToOrderResponse())
-	}
-
-	return res, nil
+func (s *OrderService) GetOrders(ctx context.Context, login string) ([]models.Order, error) {
+	return s.r.GetOrders(ctx, login)
 }
 
 func checkNumber(number string) error {

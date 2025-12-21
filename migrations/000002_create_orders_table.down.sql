@@ -1,3 +1,2 @@
 DROP TABLE IF EXISTS gophermart.orders;
-
-DROP TYPE  gophermart.order_status;
+DROP TYPE IF EXISTS gophermart.order_status;

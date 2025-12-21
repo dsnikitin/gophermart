@@ -48,10 +48,9 @@ func ValidatePassword(password, login string) error {
 	}
 
 	var (
-		hasUpper   = false
-		hasLower   = false
-		hasNumber  = false
-		hasSpecial = false
+		hasUpper  = false
+		hasLower  = false
+		hasNumber = false
 	)
 
 	for _, char := range password {
@@ -62,8 +61,6 @@ func ValidatePassword(password, login string) error {
 			hasLower = true
 		case unicode.IsDigit(char):
 			hasNumber = true
-		case unicode.IsPunct(char) || unicode.IsSymbol(char):
-			hasSpecial = true
 		case unicode.IsSpace(char):
 			return errors.New("password cannot contain spaces")
 		}
@@ -79,9 +76,6 @@ func ValidatePassword(password, login string) error {
 	}
 	if !hasNumber {
 		missingRequirements = append(missingRequirements, "digit")
-	}
-	if !hasSpecial {
-		missingRequirements = append(missingRequirements, "special character")
 	}
 
 	if len(missingRequirements) > 0 {

@@ -13,12 +13,12 @@ import (
 	"github.com/pkg/errors"
 )
 
-type User struct {
+type UserRepository struct {
 	baseRepo
 }
 
-func NewUser(db *pgxpool.Pool) *User {
-	return &User{baseRepo{db: db}}
+func NewUser(db *pgxpool.Pool) *UserRepository {
+	return &UserRepository{baseRepo{db: db}}
 }
 
 const createUserSQL = `
@@ -26,7 +26,7 @@ const createUserSQL = `
 	VALUES (@login, @password)
 `
 
-func (r *User) CreateUser(ctx context.Context, user models.User) error {
+func (r *UserRepository) CreateUser(ctx context.Context, user models.User) error {
 	_, err := r.exec(ctx, createUserSQL, pgx.NamedArgs{"login": user.Login, "password": user.Password})
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -44,7 +44,7 @@ const getUserSQL = `
 	WHERE login = @login
 `
 
-func (r *User) GetUser(ctx context.Context, login string) (models.User, error) {
+func (r *UserRepository) GetUser(ctx context.Context, login string) (models.User, error) {
 	row := r.queryRow(ctx, getUserSQL, pgx.NamedArgs{"login": login})
 
 	var user models.User

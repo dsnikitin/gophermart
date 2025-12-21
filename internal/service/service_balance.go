@@ -2,7 +2,6 @@ package service
 
 import (
 	"context"
-	"time"
 
 	"github.com/dsnikitin/gophermart/internal/models"
 	"github.com/dsnikitin/gophermart/internal/pkg/errx"
@@ -10,10 +9,11 @@ import (
 )
 
 type BalanceRepository interface {
-	GetBalance(ctx context.Context, login string) (*models.BalanceDB, error)
-	CreatWithdrawal(ctx context.Context, login string, withdrawal models.WithdrawalDB) error
-	GetWithdrawals(ctx context.Context, login string) ([]*models.WithdrawalDB, error)
-	LockUser(ctx context.Context, login string) error
+	GetBalance(ctx context.Context, login string) (models.Balance, error)
+	CreatWithdrawal(ctx context.Context, login, orderNumber string, sum float64) error
+	GetWithdrawals(ctx context.Context, login string) ([]models.Withdrawal, error)
+	// LockUser(ctx context.Context, login string) error
+	LockBalance(ctx context.Context, login string) error
 }
 
 type TransactionProvider interface {
@@ -21,21 +21,20 @@ type TransactionProvider interface {
 }
 
 type BalanceService struct {
-	repo BalanceRepository
-	tx   TransactionProvider
+	r  BalanceRepository
+	tx TransactionProvider
 }
 
-func NewBalance(repo BalanceRepository, tx TransactionProvider) *BalanceService {
-	return &BalanceService{repo: repo, tx: tx}
+func NewBalance(r BalanceRepository, tx TransactionProvider) *BalanceService {
+	return &BalanceService{r: r, tx: tx}
 }
 
-func (s *BalanceService) GetBalance(ctx context.Context, login string) (models.BalanceResponse, error) {
-	balance, err := s.repo.GetBalance(ctx, login)
-	if err != nil {
-		return models.BalanceResponse{}, errors.Wrap(err, "get balance")
-	}
+func (s *BalanceService) GetBalance(ctx context.Context, login string) (models.Balance, error) {
+	return s.r.GetBalance(ctx, login)
+}
 
-	return balance.ToBalanceResponse(), nil
+func (s *BalanceService) GetWithdrawals(ctx context.Context, login string) ([]models.Withdrawal, error) {
+	return s.r.GetWithdrawals(ctx, login)
 }
 
 func (s *BalanceService) Withdraw(ctx context.Context, login string, req models.WithdrawRequest) error {
@@ -44,8 +43,16 @@ func (s *BalanceService) Withdraw(ctx context.Context, login string, req models.
 	}
 
 	err := s.tx.Do(ctx, func(rtx BalanceRepository) error {
-		if err := rtx.LockUser(ctx, login); err != nil {
-			return errors.Wrap(err, "lock user")
+		// if err := rtx.LockUser(ctx, login); err != nil {
+		// 	return errors.Wrap(err, "lock user")
+		// }
+
+		if err := rtx.LockBalance(ctx, login); err != nil {
+			return errors.Wrap(err, "lock balance")
+		}
+
+		if err := rtx.CreatWithdrawal(ctx, login, req.Order, req.Sum); err != nil {
+			return errors.Wrap(err, "create withdrawal")
 		}
 
 		balance, err := rtx.GetBalance(ctx, login)
@@ -53,33 +60,12 @@ func (s *BalanceService) Withdraw(ctx context.Context, login string, req models.
 			return errors.Wrap(err, "get balance")
 		}
 
-		withdrawalSum := int64(req.Sum * 100)
-
-		if balance.Current-withdrawalSum < 0 {
+		if balance.Current < 0 {
 			return errx.ErrInsufficientFunds
 		}
 
-		err = rtx.CreatWithdrawal(ctx, login, models.WithdrawalDB{
-			OrderNumber: req.Order,
-			Amount:      withdrawalSum,
-			ProcessedAt: time.Now().UTC(),
-		})
-		return errors.Wrap(err, "create withdrawal")
+		return nil
 	})
 
 	return errors.Wrap(err, "do tx")
-}
-
-func (s *BalanceService) GetWithdrawals(ctx context.Context, login string) ([]models.WithdrawalResponse, error) {
-	withdrawals, err := s.repo.GetWithdrawals(ctx, login)
-	if err != nil {
-		return nil, errors.Wrap(err, "get withdrawals")
-	}
-
-	res := make([]models.WithdrawalResponse, 0, len(withdrawals))
-	for _, w := range withdrawals {
-		res = append(res, w.ToWithdrawalResponse())
-	}
-
-	return res, nil
 }

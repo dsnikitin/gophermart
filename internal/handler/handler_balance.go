@@ -12,9 +12,9 @@ import (
 )
 
 type BalanceService interface {
-	GetBalance(ctx context.Context, login string) (models.BalanceResponse, error)
+	GetBalance(ctx context.Context, login string) (models.Balance, error)
 	Withdraw(ctx context.Context, login string, withdrawal models.WithdrawRequest) error
-	GetWithdrawals(ctx context.Context, login string) ([]models.WithdrawalResponse, error)
+	GetWithdrawals(ctx context.Context, login string) ([]models.Withdrawal, error)
 }
 
 type BalanceHandler struct {
@@ -57,7 +57,7 @@ func (h *BalanceHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := req.Validate(); err != nil {
-		w.WriteHeader(http.StatusBadRequest)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 

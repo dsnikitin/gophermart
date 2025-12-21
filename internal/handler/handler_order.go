@@ -14,7 +14,7 @@ import (
 
 type OrderService interface {
 	UploadOrder(ctx context.Context, login, orderNumber string) error
-	GetOrders(ctx context.Context, login string) ([]models.OrderResponse, error)
+	GetOrders(ctx context.Context, login string) ([]models.Order, error)
 }
 
 type OrderHandler struct {
@@ -25,7 +25,7 @@ func NewOrder(service OrderService) *OrderHandler {
 	return &OrderHandler{service: service}
 }
 
-func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
+func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 	login := r.Header.Get("x-user-login")
 
 	numberBytes, err := io.ReadAll(r.Body)
@@ -46,7 +46,7 @@ func (h *OrderHandler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		err = errors.Wrap(err, "upload order")
 
 		switch {
-		case errors.Is(err, errx.ErrUserOrderExists):
+		case errors.Is(err, errx.ErrAlreadyAccepted):
 			w.WriteHeader(http.StatusOK)
 		case errors.Is(err, errx.ErrAlreadyExists):
 			w.WriteHeader(http.StatusConflict)

@@ -8,15 +8,15 @@ import (
 )
 
 type BalanceTxAdapter struct {
-	repo *repository.Balance
+	repo *repository.BalanceRepository
 }
 
-func NewBalanceTxAdapter(repo *repository.Balance) *BalanceTxAdapter {
+func NewBalanceTxAdapter(repo *repository.BalanceRepository) *BalanceTxAdapter {
 	return &BalanceTxAdapter{repo: repo}
 }
 
 func (a *BalanceTxAdapter) Do(ctx context.Context, fn func(service.BalanceRepository) error) error {
-	return a.repo.DoTx(ctx, func(txRepo *repository.Balance) error {
+	return a.repo.DoTx(ctx, func(txRepo *repository.BalanceRepository) error {
 		return fn(txRepo)
 	})
 }
