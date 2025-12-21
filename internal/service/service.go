@@ -1,22 +1,28 @@
 package service
 
+import "github.com/dsnikitin/gophermart/internal/config"
+
 type Service struct {
 	User    *UserService
 	Order   *OrderService
 	Balance *BalanceService
+	Accrual *AccrualService
 }
 
-type Repository struct {
-	User       UserRepository
-	Order      OrderRepository
-	Balance    BalanceRepository
-	TxProvider TransactionProvider
+type Dependencies struct {
+	User      UserRepository
+	Order     OrderRepository
+	Balance   BalanceRepository
+	BalanceTx BalanceTxProvider
+	Accrual   AccrualRepository
+	AccrualTx AccrualTxProvider
 }
 
-func New(r *Repository) *Service {
+func New(cfg *config.Config, d *Dependencies) *Service {
 	return &Service{
-		User:    NewUser(r.User),
-		Order:   NewOrder(r.Order),
-		Balance: NewBalance(r.Balance, r.TxProvider),
+		User:    NewUserService(d.User),
+		Order:   NewOrderService(d.Order),
+		Balance: NewBalanceService(d.Balance, d.BalanceTx),
+		Accrual: NewAccrualService(cfg.AccrualSystemAddr, d.Accrual, d.AccrualTx),
 	}
 }

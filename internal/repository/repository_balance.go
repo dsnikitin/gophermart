@@ -13,7 +13,7 @@ type BalanceRepository struct {
 	*baseRepo
 }
 
-func NewBalance(db *pgxpool.Pool) *BalanceRepository {
+func NewBalanceRepository(db *pgxpool.Pool) *BalanceRepository {
 	return &BalanceRepository{&baseRepo{db: db}}
 }
 
@@ -88,34 +88,11 @@ func (r *BalanceRepository) GetWithdrawals(ctx context.Context, login string) ([
 	return withdrawals, nil
 }
 
-// const lockUserSQL = `
-// 	SELECT 1
-// 	FROM gophermart.users
-// 	WHERE user_login = @login
-// 	FOR UPDATE
-// `
-
-// func (r *BalanceRepository) LockUser(ctx context.Context, login string) error {
-// 	row := r.queryRow(ctx, lockUserSQL, pgx.NamedArgs{"login": login})
-
-// 	var locked int
-// 	if err := row.Scan(&locked); err != nil {
-// 		if errors.Is(err, pgx.ErrNoRows) {
-// 			return errx.ErrNotFound
-// 		}
-
-// 		return errors.Wrap(err, "scan user locked")
-// 	}
-
-// 	return nil
-// }
-
 const advisoryLockSQL = `
     SELECT pg_advisory_xact_lock(hashtext(@login))
 `
 
 func (r *BalanceRepository) LockBalance(ctx context.Context, login string) error {
-	// var _ int8
 	_, err := r.exec(ctx, advisoryLockSQL, pgx.NamedArgs{"login": login})
 	return errors.Wrap(err, "exec")
 }

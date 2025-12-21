@@ -20,3 +20,17 @@ func (a *BalanceTxAdapter) Do(ctx context.Context, fn func(service.BalanceReposi
 		return fn(txRepo)
 	})
 }
+
+type AccrualTxAdapter struct {
+	repo *repository.AccrualRepository
+}
+
+func NewAccrualTxAdapter(repo *repository.AccrualRepository) *AccrualTxAdapter {
+	return &AccrualTxAdapter{repo: repo}
+}
+
+func (a *AccrualTxAdapter) Do(ctx context.Context, fn func(service.AccrualRepository) error) error {
+	return a.repo.DoTx(ctx, func(txRepo *repository.AccrualRepository) error {
+		return fn(txRepo)
+	})
+}

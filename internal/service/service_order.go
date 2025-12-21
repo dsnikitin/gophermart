@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/dsnikitin/gophermart/internal/models"
-	"github.com/dsnikitin/gophermart/internal/pkg/accrualer"
 	"github.com/dsnikitin/gophermart/internal/pkg/errx"
 	"github.com/pkg/errors"
 )
@@ -16,11 +15,10 @@ type OrderRepository interface {
 }
 
 type OrderService struct {
-	r         OrderRepository
-	accrualer *accrualer.Accrualer
+	r OrderRepository
 }
 
-func NewOrder(r OrderRepository) *OrderService {
+func NewOrderService(r OrderRepository) *OrderService {
 	return &OrderService{r: r}
 }
 

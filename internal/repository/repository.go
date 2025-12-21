@@ -14,13 +14,15 @@ type Repository struct {
 	User    *UserRepository
 	Order   *OrderRepository
 	Balance *BalanceRepository
+	Accrual *AccrualRepository
 }
 
 func New(db *pgxpool.Pool) *Repository {
 	return &Repository{
-		User:    NewUser(db),
-		Order:   NewOrder(db),
-		Balance: NewBalance(db),
+		User:    NewUserRepository(db),
+		Order:   NewOrderRepository(db),
+		Balance: NewBalanceRepository(db),
+		Accrual: NewAccrualRepository(db),
 	}
 }
 

@@ -14,11 +14,11 @@ import (
 )
 
 type UserRepository struct {
-	baseRepo
+	*baseRepo
 }
 
-func NewUser(db *pgxpool.Pool) *UserRepository {
-	return &UserRepository{baseRepo{db: db}}
+func NewUserRepository(db *pgxpool.Pool) *UserRepository {
+	return &UserRepository{&baseRepo{db: db}}
 }
 
 const createUserSQL = `

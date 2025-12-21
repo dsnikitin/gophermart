@@ -13,7 +13,7 @@ import (
 	"github.com/dsnikitin/gophermart/internal/config"
 	"github.com/dsnikitin/gophermart/internal/handler"
 	"github.com/dsnikitin/gophermart/internal/models"
-	"github.com/dsnikitin/gophermart/internal/pkg/consts/status"
+	"github.com/dsnikitin/gophermart/internal/pkg/consts/order"
 	"github.com/dsnikitin/gophermart/internal/pkg/errx"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
@@ -38,6 +38,12 @@ func (m *MockOrderService) GetOrders(ctx context.Context, login string) ([]model
 	return args.Get(0).([]models.Order), args.Error(1)
 }
 
+type MockAccrualService struct {
+	mock.Mock
+}
+
+func (m *MockAccrualService) NotifyOrderUploaded() {}
+
 func TestUserHandler_UploadOrder(t *testing.T) {
 	userLogin := "user1"
 	orderNumber := "12345678903"
@@ -53,7 +59,7 @@ func TestUserHandler_UploadOrder(t *testing.T) {
 	}
 
 	s := new(MockOrderService)
-	h := handler.New(&config.Config{}, &handler.Service{Order: s})
+	h := handler.New(&config.Config{}, &handler.Service{Order: s, Accrual: new(MockAccrualService)})
 
 	r := chi.NewRouter()
 	r.Post("/api/user/orders", h.Order.UploadOrder)
@@ -215,10 +221,10 @@ func TestUserHandler_UploadOrder(t *testing.T) {
 
 func TestUserHandler_GetOrders(t *testing.T) {
 	type OrderResp struct {
-		Number     string             `json:"number"`
-		Status     status.OrderStatus `json:"status"`
-		UploadedAt string             `json:"uploaded_at"`
-		Accrual    float64            `json:"accrual"`
+		Number     string       `json:"number"`
+		Status     order.Status `json:"status"`
+		UploadedAt string       `json:"uploaded_at"`
+		Accrual    float64      `json:"accrual"`
 	}
 
 	userLogin := "user1"

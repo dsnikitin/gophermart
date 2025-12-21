@@ -12,20 +12,19 @@ type BalanceRepository interface {
 	GetBalance(ctx context.Context, login string) (models.Balance, error)
 	CreatWithdrawal(ctx context.Context, login, orderNumber string, sum float64) error
 	GetWithdrawals(ctx context.Context, login string) ([]models.Withdrawal, error)
-	// LockUser(ctx context.Context, login string) error
 	LockBalance(ctx context.Context, login string) error
 }
 
-type TransactionProvider interface {
+type BalanceTxProvider interface {
 	Do(ctx context.Context, fn func(BalanceRepository) error) error
 }
 
 type BalanceService struct {
 	r  BalanceRepository
-	tx TransactionProvider
+	tx BalanceTxProvider
 }
 
-func NewBalance(r BalanceRepository, tx TransactionProvider) *BalanceService {
+func NewBalanceService(r BalanceRepository, tx BalanceTxProvider) *BalanceService {
 	return &BalanceService{r: r, tx: tx}
 }
 
@@ -43,10 +42,6 @@ func (s *BalanceService) Withdraw(ctx context.Context, login string, req models.
 	}
 
 	err := s.tx.Do(ctx, func(rtx BalanceRepository) error {
-		// if err := rtx.LockUser(ctx, login); err != nil {
-		// 	return errors.Wrap(err, "lock user")
-		// }
-
 		if err := rtx.LockBalance(ctx, login); err != nil {
 			return errors.Wrap(err, "lock balance")
 		}

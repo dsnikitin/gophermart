@@ -10,4 +10,7 @@ var (
 	ErrInvalidPassword    = errors.New("invalid password")
 	ErrNotFound           = errors.New("not found")
 	ErrInsufficientFunds  = errors.New("insufficient funds")
+	ErrAllWorkersBusy     = errors.New("all workers are busy")
+	ErrToManyRequests     = errors.New("too many requests")
+	ErrUnregisteredOrder  = errors.New("unregistered order")
 )

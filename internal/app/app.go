@@ -16,18 +16,21 @@ import (
 )
 
 type App struct {
-	cfg *config.Config
-	srv *server.Server
+	cfg     *config.Config
+	srv     *server.Server
+	service *service.Service
 }
 
 func New(cfg *config.Config, db *pgxpool.Pool) *App {
 	repo := repository.New(db)
 
-	services := service.New(&service.Repository{
-		User:       repo.User,
-		Order:      repo.Order,
-		Balance:    repo.Balance,
-		TxProvider: adapter.NewBalanceTxAdapter(repo.Balance),
+	services := service.New(cfg, &service.Dependencies{
+		User:      repo.User,
+		Order:     repo.Order,
+		Balance:   repo.Balance,
+		BalanceTx: adapter.NewBalanceTxAdapter(repo.Balance),
+		Accrual:   repo.Accrual,
+		AccrualTx: adapter.NewAccrualTxAdapter(repo.Accrual),
 	})
 
 	handlers := handler.New(cfg, &handler.Service{
@@ -37,8 +40,9 @@ func New(cfg *config.Config, db *pgxpool.Pool) *App {
 	})
 
 	return &App{
-		cfg: cfg,
-		srv: server.New(cfg, handlers),
+		cfg:     cfg,
+		srv:     server.New(cfg, handlers),
+		service: services,
 	}
 }
 
@@ -50,6 +54,8 @@ func (a *App) Run() {
 }
 
 func (a *App) Shutdown() {
+	a.service.Accrual.Stop()
+
 	logger.Log.Info("Shutting down server...")
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()

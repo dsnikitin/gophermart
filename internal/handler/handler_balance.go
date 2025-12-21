@@ -21,7 +21,7 @@ type BalanceHandler struct {
 	service BalanceService
 }
 
-func NewBalance(service BalanceService) *BalanceHandler {
+func NewBalanceHandler(service BalanceService) *BalanceHandler {
 	return &BalanceHandler{service: service}
 }
 

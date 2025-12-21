@@ -24,7 +24,7 @@ type UserHandler struct {
 	service UserService
 }
 
-func NewUser(cfg *config.Config, service UserService) *UserHandler {
+func NewUserHandler(cfg *config.Config, service UserService) *UserHandler {
 	return &UserHandler{cfg: cfg, service: service}
 }
 

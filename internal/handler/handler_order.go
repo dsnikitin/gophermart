@@ -17,12 +17,17 @@ type OrderService interface {
 	GetOrders(ctx context.Context, login string) ([]models.Order, error)
 }
 
-type OrderHandler struct {
-	service OrderService
+type AccrualService interface {
+	NotifyOrderUploaded()
 }
 
-func NewOrder(service OrderService) *OrderHandler {
-	return &OrderHandler{service: service}
+type OrderHandler struct {
+	order   OrderService
+	accrual AccrualService
+}
+
+func NewOrderHandler(order OrderService, accrual AccrualService) *OrderHandler {
+	return &OrderHandler{order: order, accrual: accrual}
 }
 
 func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
@@ -42,7 +47,7 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 	}
 
 	number := string(numberBytes)
-	if err = h.service.UploadOrder(r.Context(), login, number); err != nil {
+	if err = h.order.UploadOrder(r.Context(), login, number); err != nil {
 		err = errors.Wrap(err, "upload order")
 
 		switch {
@@ -61,13 +66,15 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	go h.accrual.NotifyOrderUploaded()
+
 	w.WriteHeader(http.StatusAccepted)
 }
 
 func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
 	login := r.Header.Get("x-user-login")
 
-	orders, err := h.service.GetOrders(r.Context(), login)
+	orders, err := h.order.GetOrders(r.Context(), login)
 	if err != nil {
 		err = errors.Wrap(err, "get orders")
 		logger.Log.Errorw("Failed to get orders", "user", login, "error", err.Error())

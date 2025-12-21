@@ -13,11 +13,11 @@ import (
 )
 
 type OrderRepository struct {
-	baseRepo
+	*baseRepo
 }
 
-func NewOrder(db *pgxpool.Pool) *OrderRepository {
-	return &OrderRepository{baseRepo{db: db}}
+func NewOrderRepository(db *pgxpool.Pool) *OrderRepository {
+	return &OrderRepository{&baseRepo{db: db}}
 }
 
 const uploadOrderSQL = `

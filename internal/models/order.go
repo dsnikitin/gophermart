@@ -4,15 +4,15 @@ import (
 	"encoding/json"
 	"time"
 
-	"github.com/dsnikitin/gophermart/internal/pkg/consts/status"
+	"github.com/dsnikitin/gophermart/internal/pkg/consts/order"
 )
 
 type Order struct {
-	Number     string             `json:"number"`
-	Status     status.OrderStatus `json:"status"`
-	UploadedAt time.Time          `json:"uploaded_at"`
-	Accrual    float64            `json:"accrual,omitempty"`
-	UserLogin  string             `json:"-"`
+	Number     string       `json:"number"`
+	Status     order.Status `json:"status"`
+	UploadedAt time.Time    `json:"uploaded_at"`
+	Accrual    float64      `json:"accrual,omitempty"`
+	UserLogin  string       `json:"-"`
 }
 
 func (m *Order) ScanFields() []any {
