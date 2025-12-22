@@ -27,8 +27,8 @@ func New() (*Config, error) {
 		Auth: &auth.Config{},
 	}
 
-	flag.StringVar(&cfg.ServerAddr, "a", "localhost:8081", "server host:port")
-	flag.StringVar(&cfg.AccrualSystemAddr, "r", "localhost:8080", "accrual system address")
+	flag.StringVar(&cfg.ServerAddr, "a", "localhost:8080", "server host:port")
+	flag.StringVar(&cfg.AccrualSystemAddr, "r", "localhost:8090", "accrual system address")
 	flag.StringVar(&cfg.DB.URI, "d", "", "database URI")
 	flag.StringVar(&cfg.DB.MigrationsPath, "m", "migrations", "migrations path")
 	flag.StringVar(&cfg.Log.Lvl, "l", "info", "log level")
