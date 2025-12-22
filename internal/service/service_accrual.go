@@ -258,7 +258,7 @@ func (s *AccrualService) handleOrder(ctx context.Context, order models.Order) er
 }
 
 func (s *AccrualService) getAccrual(ctx context.Context, number string) (models.Accrual, error) {
-	endpoint := "http://" + s.accrualSystemAddr + "/api/orders/" + number
+	endpoint := s.accrualSystemAddr + "/api/orders/" + number
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return models.Accrual{}, errors.Wrap(err, "new http request")
