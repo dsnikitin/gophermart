@@ -12,20 +12,21 @@ import (
 
 func initRouter(cfg *config.Config, h *handler.Handler) *chi.Mux {
 	router := chi.NewRouter()
-
 	router.Use(middleware.Logger)
-	router.Route("/api/user", func(r chi.Router) {
-		r.Post("/register", http.HandlerFunc(h.User.Register))
-		r.Post("/login", http.HandlerFunc(h.User.Login))
+	router.Use(middleware.GzipCompress)
 
-		r.Group(func(r chi.Router) {
-			r.Use(middleware.Auth(cfg.Auth))
+	router.Route("/api/user", func(public chi.Router) {
+		public.Post("/register", http.HandlerFunc(h.User.Register))
+		public.Post("/login", http.HandlerFunc(h.User.Login))
 
-			r.Get("/orders", http.HandlerFunc(h.Order.GetOrders))
-			r.Post("/orders", http.HandlerFunc(h.Order.UploadOrder))
-			r.Get("/balance", http.HandlerFunc(h.Balance.GetBalance))
-			r.Post("/balance/withdraw", http.HandlerFunc(h.Balance.Withdraw))
-			r.Get("/withdrawals", http.HandlerFunc(h.Balance.GetWithdrawals))
+		public.Group(func(protected chi.Router) {
+			protected.Use(middleware.Auth(cfg.Auth))
+
+			protected.Get("/orders", http.HandlerFunc(h.Order.GetOrders))
+			protected.Post("/orders", http.HandlerFunc(h.Order.UploadOrder))
+			protected.Get("/balance", http.HandlerFunc(h.Balance.GetBalance))
+			protected.Post("/balance/withdraw", http.HandlerFunc(h.Balance.Withdraw))
+			protected.Get("/withdrawals", http.HandlerFunc(h.Balance.GetWithdrawals))
 		})
 	})
 
