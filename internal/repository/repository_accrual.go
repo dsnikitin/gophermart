@@ -2,7 +2,6 @@ package repository
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/dsnikitin/gophermart/internal/models"
@@ -75,8 +74,6 @@ const getStaleOrdersSQL = `
 func (r *AccrualRepository) GetStaleOrders(
 	ctx context.Context, threshold time.Time, statuses ...order.Status,
 ) ([]models.Order, error) {
-	fmt.Println("threshold =", threshold)
-
 	rows, err := r.query(ctx, getStaleOrdersSQL, pgx.NamedArgs{"statuses": statuses, "threshold": threshold})
 	if err != nil {
 		return nil, errors.Wrap(err, "query")

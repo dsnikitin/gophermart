@@ -108,8 +108,8 @@ func (h *UserHandler) setAuthCookie(w http.ResponseWriter, login string) error {
 
 	cookie := &http.Cookie{
 		HttpOnly: true,
-		SameSite: http.SameSiteStrictMode,
-		Secure:   true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   h.cfg.Log.IsProduction,
 		Name:     h.cfg.Auth.CookieName,
 		Value:    authToken,
 	}

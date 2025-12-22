@@ -6,14 +6,9 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
-const (
-	DevEnv  string = "dev"
-	ProdEnv string = "prod"
-)
-
 type Config struct {
-	Lvl     string `env:"LOG_LEVEL"`
-	EnvType string `env:"LOG_ENV_TYPE"`
+	Lvl          string `env:"LOG_LEVEL"`
+	IsProduction bool   `env:"LOG_IS_PROD"`
 }
 
 var Log = zap.Must(zap.NewDevelopment()).Sugar()
@@ -25,13 +20,10 @@ func Setup(cfg *Config) error {
 	}
 
 	var zapCfg zap.Config
-	switch cfg.EnvType {
-	case DevEnv:
-		zapCfg = zap.NewDevelopmentConfig()
-	case ProdEnv:
+	if cfg.IsProduction {
 		zapCfg = zap.NewProductionConfig()
-	default:
-		return errors.Errorf("unknown environment %s", cfg.EnvType)
+	} else {
+		zapCfg = zap.NewDevelopmentConfig()
 	}
 
 	zapCfg.Level = lvl

@@ -37,6 +37,7 @@ func New(cfg *config.Config, db *pgxpool.Pool) *App {
 		User:    services.User,
 		Order:   services.Order,
 		Balance: services.Balance,
+		Accrual: services.Accrual,
 	})
 
 	return &App{

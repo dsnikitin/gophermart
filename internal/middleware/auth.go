@@ -12,6 +12,7 @@ func Auth(cfg *auth.Config) func(h http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookie, err := r.Cookie(cfg.CookieName)
 			if err != nil {
+				logger.Log.Info("Empty auth cookie")
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}
@@ -24,7 +25,7 @@ func Auth(cfg *auth.Config) func(h http.Handler) http.Handler {
 			}
 
 			if claims.Login == "" {
-				logger.Log.Warn("Empty login in auth token")
+				logger.Log.Info("Empty login in auth token")
 				w.WriteHeader(http.StatusUnauthorized)
 				return
 			}

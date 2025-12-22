@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"math/rand"
 	"net/http"
 	"sync"
@@ -71,7 +70,6 @@ func NewAccrualService(accrualSystemAddr string, r AccrualRepository, tx Accrual
 }
 
 func (s *AccrualService) NotifyOrderUploaded() {
-	fmt.Println("IN NotifyOrderUploaded")
 	select {
 	case s.wakeUpCh <- struct{}{}:
 	default:
@@ -96,20 +94,19 @@ func (s *AccrualService) ordersProducer() {
 		case <-s.stopCh:
 			return
 		case <-s.wakeUpCh:
-			fmt.Println("IN ordersProducer")
 			for {
 				if err := s.produceOrder(ctx); err != nil {
-					fmt.Println("AFTER produceOrder, err =", err)
 					if errors.Is(err, errx.ErrNotFound) {
 						break
 					}
 
 					if errors.Is(err, errx.ErrAllWorkersBusy) {
-						logger.Log.Infow("All workers are busy for proccessing next order")
+						logger.Log.Infow("All handlers are busy for proccessing next order")
 						break
 					}
 
-					logger.Log.Warnw("Failed to produce next order to processing", "error", err.Error())
+					err := errors.Wrap(err, "produce order")
+					logger.Log.Warnw("Failed to produce next order", "error", err.Error())
 				}
 			}
 		}
@@ -122,9 +119,10 @@ func (s *AccrualService) staleOrdersProducer() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	if err := s.produceStaleOrders(ctx); err != nil {
-		err = errors.Wrap(err, "produce stale orders")
-		logger.Log.Warnw("Failed to produce stale orders on start", "error", err.Error())
+	logger.Log.Info("Restarting stale orders...")
+	if err := s.restartStaleOrders(ctx, time.Now().UTC()); err != nil {
+		err = errors.Wrap(err, "restart stale orders")
+		logger.Log.Errorw("Failed to restart stale orders on start", "error", err.Error())
 	}
 
 	ticker := time.NewTicker(restartingStaleOrdersInterval)
@@ -135,9 +133,10 @@ func (s *AccrualService) staleOrdersProducer() {
 		case <-s.stopCh:
 			return
 		case <-ticker.C:
-			if err := s.produceStaleOrders(ctx); err != nil {
-				err = errors.Wrap(err, "produce stale orders")
-				logger.Log.Warnw("Failed to produce stale orders", "error", err.Error())
+			err := s.restartStaleOrders(ctx, time.Now().UTC().Add(-restartingStaleOrdersInterval))
+			if err != nil {
+				err = errors.Wrap(err, "restart stale orders")
+				logger.Log.Errorw("Failed to restart stale orders", "error", err.Error())
 			}
 		}
 	}
@@ -154,12 +153,16 @@ func (s *AccrualService) ordersHandler() {
 		case <-s.stopCh:
 			return
 		case order, ok := <-s.ordersCh:
-			fmt.Println("IN ordersHandler")
 			if !ok {
 				return
 			}
 
 			if err := s.handleOrder(ctx, order); err != nil {
+				if errors.Is(err, errx.ErrUnregisteredOrder) {
+					logger.Log.Warnw("Order is not registered in accrual system", "orderNumber", order.Number)
+					break
+				}
+
 				err = errors.Wrap(err, "handle order")
 				logger.Log.Errorw("Failed to handle order", "orderNumber", order.Number, "error", err)
 			}
@@ -173,15 +176,11 @@ func (s *AccrualService) ordersHandler() {
 }
 
 func (s *AccrualService) produceOrder(ctx context.Context) error {
-	fmt.Println("IN produceOrder")
-
 	err := s.tx.Do(ctx, func(rTx AccrualRepository) error {
 		order, err := rTx.GetOldestOrderWithLock(ctx, order_status.New)
 		if err != nil {
 			return errors.Wrap(err, "get olders order with lock")
 		}
-
-		fmt.Printf("ORDER = %+v\n", order)
 
 		if err := rTx.UpdateOrder(ctx, order.Number, order_status.Processing, nil); err != nil {
 			return errors.Wrap(err, "update order")
@@ -202,15 +201,11 @@ func (s *AccrualService) produceOrder(ctx context.Context) error {
 	return errors.Wrap(err, "do tx")
 }
 
-func (s *AccrualService) produceStaleOrders(ctx context.Context) error {
-	threshold := time.Now().UTC().Add(-restartingStaleOrdersInterval)
-
-	orders, err := s.r.GetStaleOrders(ctx, threshold, order_status.New, order_status.Processing)
+func (s *AccrualService) restartStaleOrders(ctx context.Context, stalingThreshold time.Time) error {
+	orders, err := s.r.GetStaleOrders(ctx, stalingThreshold, order_status.New, order_status.Processing)
 	if err != nil {
 		return errors.Wrap(err, "get stale orders")
 	}
-
-	fmt.Println("staleOrdersLen =", len(orders))
 
 	for _, order := range orders {
 		if order.Status == order_status.New {
@@ -218,9 +213,11 @@ func (s *AccrualService) produceStaleOrders(ctx context.Context) error {
 			continue
 		}
 
+	attempts_loop:
 		for range attempts {
 			select {
 			case s.ordersCh <- order:
+				break attempts_loop
 			default:
 				time.Sleep(time.Millisecond * 500)
 			}
@@ -231,7 +228,6 @@ func (s *AccrualService) produceStaleOrders(ctx context.Context) error {
 }
 
 func (s *AccrualService) handleOrder(ctx context.Context, order models.Order) error {
-	fmt.Println("IN handleOrder")
 	for range attempts {
 		select {
 		case <-s.stopCh:
@@ -239,29 +235,21 @@ func (s *AccrualService) handleOrder(ctx context.Context, order models.Order) er
 		default:
 			accrual, err := s.getAccrual(ctx, order.Number)
 			if err != nil {
-				err := errors.Wrap(err, "get accrual")
-
-				switch {
-				case errors.Is(err, errx.ErrToManyRequests):
+				if errors.Is(err, errx.ErrToManyRequests) {
 					time.Sleep(time.Second * time.Duration(rand.Intn(10)))
 					continue
-				case errors.Is(err, errx.ErrUnregisteredOrder):
-					logger.Log.Infow("Order is not registered in accrual system", "orderNumber", order.Number)
-					err := s.r.UpdateOrder(ctx, order.Number, order_status.Invalid, nil)
-					return errors.Wrap(err, "update non-registred order status")
-				default:
-					logger.Log.Warnw("Failed to get accrual", "orderNumber", order.Number, "error", err.Error())
-					continue
 				}
+
+				return errors.Wrap(err, "get accrual")
 			}
 
 			switch accrual.Status {
 			case accrual_status.Invalid:
 				err := s.r.UpdateOrder(ctx, order.Number, order_status.Invalid, nil)
-				return errors.Wrap(err, "update invalid order status")
+				return errors.Wrap(err, "update order status to invalid")
 			case accrual_status.Processed:
 				err := s.r.UpdateOrder(ctx, order.Number, order_status.Processed, &accrual.Accrual)
-				return errors.Wrap(err, "update processed order status and acrrual")
+				return errors.Wrap(err, "update acrrual and order status to processed")
 			}
 		}
 	}
@@ -270,8 +258,8 @@ func (s *AccrualService) handleOrder(ctx context.Context, order models.Order) er
 }
 
 func (s *AccrualService) getAccrual(ctx context.Context, number string) (models.Accrual, error) {
-	fmt.Println("IN getAccural")
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.accrualSystemAddr+"/api/orders/"+number, nil)
+	endpoint := "http://" + s.accrualSystemAddr + "/api/orders/" + number
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return models.Accrual{}, errors.Wrap(err, "new http request")
 	}
@@ -281,8 +269,6 @@ func (s *AccrualService) getAccrual(ctx context.Context, number string) (models.
 		return models.Accrual{}, errors.Wrap(err, "do http request")
 	}
 	defer resp.Body.Close()
-
-	fmt.Println("RESP STATUS CODE =", resp.StatusCode)
 
 	switch resp.StatusCode {
 	case http.StatusOK:
@@ -296,7 +282,7 @@ func (s *AccrualService) getAccrual(ctx context.Context, number string) (models.
 	case http.StatusTooManyRequests:
 		return models.Accrual{}, errx.ErrToManyRequests
 	default:
-		return models.Accrual{}, errors.Wrap(errx.ErrInternalServer, "accrualer server error")
+		return models.Accrual{}, errors.Wrap(errx.ErrInternalServer, "accrual system internal error")
 	}
 }
 

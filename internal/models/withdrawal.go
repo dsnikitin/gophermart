@@ -29,14 +29,14 @@ func (m *Withdrawal) ScanFields() []any {
 	return []any{&m.OrderNumber, &m.Sum, &m.ProcessedAt}
 }
 
-func (r Withdrawal) MarshalJSON() ([]byte, error) {
+func (m Withdrawal) MarshalJSON() ([]byte, error) {
 	type Alias Withdrawal
 	resp := &struct {
 		Alias
 		ProcessedAt string `json:"processed_at"`
 	}{
-		Alias:       Alias(r),
-		ProcessedAt: r.ProcessedAt.Truncate(time.Second).Format(time.RFC3339),
+		Alias:       Alias(m),
+		ProcessedAt: m.ProcessedAt.Truncate(time.Second).Format(time.RFC3339),
 	}
 
 	return json.Marshal(resp)

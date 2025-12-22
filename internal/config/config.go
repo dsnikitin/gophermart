@@ -27,12 +27,12 @@ func New() (*Config, error) {
 		Auth: &auth.Config{},
 	}
 
-	flag.StringVar(&cfg.ServerAddr, "a", "localhost:8080", "server host:port")
-	flag.StringVar(&cfg.AccrualSystemAddr, "r", "localhost:8090", "accrual system address")
+	flag.StringVar(&cfg.ServerAddr, "a", "localhost:8081", "server host:port")
+	flag.StringVar(&cfg.AccrualSystemAddr, "r", "localhost:8080", "accrual system address")
 	flag.StringVar(&cfg.DB.URI, "d", "", "database URI")
 	flag.StringVar(&cfg.DB.MigrationsPath, "m", "migrations", "migrations path")
 	flag.StringVar(&cfg.Log.Lvl, "l", "info", "log level")
-	flag.StringVar(&cfg.Log.EnvType, "e", logger.DevEnv, "environment type (dev or prod)")
+	flag.BoolVar(&cfg.Log.IsProduction, "e", false, "is production flag")
 	flag.StringVar(&cfg.Auth.CookieName, "c", "auth_token", "auth cookie name")
 	flag.DurationVar(&cfg.Auth.TokenExp, "t", time.Hour*3, "auth token ttl")
 	flag.Parse()
@@ -42,7 +42,7 @@ func New() (*Config, error) {
 	}
 
 	if err := env.Parse(cfg.DB); err != nil {
-		return nil, errors.Wrap(err, "parse auth env")
+		return nil, errors.Wrap(err, "parse db env")
 	}
 
 	if err := env.Parse(cfg.Log); err != nil {
