@@ -50,7 +50,7 @@ func New(cfg *config.Config, db *pgxpool.Pool) *App {
 func (a *App) Run() {
 	logger.Log.Infow("Starting server", "address", a.cfg.ServerAddr)
 	if err := a.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		logger.Log.Fatalw("Failed to start server", "error", err)
+		logger.Log.Fatalw("Failed to start server", "error", err.Error())
 	}
 }
 
@@ -62,7 +62,7 @@ func (a *App) Shutdown() {
 	defer cancel()
 
 	if err := a.srv.Shutdown(ctx); err != nil {
-		logger.Log.Errorw("Failed to shutdown server", "error", err)
+		logger.Log.Errorw("Failed to shutdown server", "error", err.Error())
 	} else {
 		logger.Log.Info("Server shutdown gracefully")
 	}

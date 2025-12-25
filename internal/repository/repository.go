@@ -3,7 +3,9 @@ package repository
 import (
 	"context"
 
+	"github.com/dsnikitin/gophermart/internal/pkg/errx"
 	"github.com/dsnikitin/gophermart/internal/pkg/logger"
+	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -53,23 +55,68 @@ func (r *baseRepo) doTx(ctx context.Context, fn func(*baseRepo) error) error {
 	return errors.Wrap(err, "commit tx")
 }
 
-func (r *baseRepo) query(ctx context.Context, sql string, args ...any) (pgx.Rows, error) {
+func (r *baseRepo) exec(ctx context.Context, sql string, args pgx.NamedArgs) (res pgconn.CommandTag, err error) {
 	if r.tx != nil {
-		return r.tx.Query(ctx, sql, args...)
+		res, err = r.tx.Exec(ctx, sql, args)
+	} else {
+		res, err = r.db.Exec(ctx, sql, args)
 	}
-	return r.db.Query(ctx, sql, args...)
+
+	if err != nil {
+		var pgErr *pgconn.PgError
+		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
+			return pgconn.CommandTag{}, errx.ErrAlreadyExists
+		}
+
+		return pgconn.CommandTag{}, errors.Wrap(err, "pool exec error")
+	}
+
+	return res, nil
 }
 
-func (r *baseRepo) queryRow(ctx context.Context, sql string, args ...any) pgx.Row {
+func queryOne[T any](
+	ctx context.Context, r *baseRepo, sql string, args pgx.NamedArgs, fieldsPointer func(*T) []any,
+) (obj T, err error) {
 	if r.tx != nil {
-		return r.tx.QueryRow(ctx, sql, args...)
+		err = r.tx.QueryRow(ctx, sql, args).Scan(fieldsPointer(&obj)...)
+	} else {
+		err = r.db.QueryRow(ctx, sql, args).Scan(fieldsPointer(&obj)...)
 	}
-	return r.db.QueryRow(ctx, sql, args...)
+
+	if err == pgx.ErrNoRows {
+		return obj, errx.ErrNotFound
+	}
+
+	return obj, errors.Wrap(err, "scan db row")
 }
 
-func (r *baseRepo) exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error) {
+func queryMany[T any](
+	ctx context.Context, r *baseRepo, sql string, args pgx.NamedArgs, fieldsPointer func(*T) []any,
+) (objs []T, err error) {
+	var rows pgx.Rows
 	if r.tx != nil {
-		return r.tx.Exec(ctx, sql, args...)
+		rows, err = r.tx.Query(ctx, sql, args)
+	} else {
+		rows, err = r.db.Query(ctx, sql, args)
 	}
-	return r.db.Exec(ctx, sql, args...)
+
+	if err != nil {
+		return nil, errors.Wrap(err, "query")
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var obj T
+		if err := rows.Scan(fieldsPointer(&obj)...); err != nil {
+			return nil, errors.Wrap(err, "scan db row")
+		}
+
+		objs = append(objs, obj)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, errors.Wrap(err, "iteration error")
+	}
+
+	return objs, nil
 }

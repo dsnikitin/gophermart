@@ -14,8 +14,8 @@ import (
 )
 
 type Config struct {
-	URI            string `env:"DATABASE_URI"`
-	MigrationsPath string `env:"DATABASE_MIGRATIONS_PATH"`
+	URI            string `env:"URI"`
+	MigrationsPath string `env:"MIGRATIONS_PATH"`
 }
 
 func Connect(cfg *Config) (*pgxpool.Pool, error) {

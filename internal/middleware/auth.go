@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 
 	"github.com/dsnikitin/gophermart/internal/pkg/auth"
@@ -30,8 +31,8 @@ func Auth(cfg *auth.Config) func(h http.Handler) http.Handler {
 				return
 			}
 
-			r.Header.Set("x-user-login", claims.Login)
-			h.ServeHTTP(w, r)
+			ctx := context.WithValue(r.Context(), "x-user-login", claims.Login)
+			h.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}
 }

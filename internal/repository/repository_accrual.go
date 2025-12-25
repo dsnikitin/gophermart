@@ -54,15 +54,12 @@ const getOldersOrderWithLock = `
 `
 
 func (r *AccrualRepository) GetOldestOrderWithLock(ctx context.Context, status order.Status) (models.Order, error) {
-	var order models.Order
-	row := r.queryRow(ctx, getOldersOrderWithLock, pgx.NamedArgs{"status": status})
-	if err := row.Scan(order.ScanFields()...); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return models.Order{}, errx.ErrNotFound
-		}
-	}
+	args := pgx.NamedArgs{"status": status}
+	fieldsPointer := func(o *models.Order) []any { return o.ScanFields() }
 
-	return order, nil
+	order, err := queryOne(ctx, r.baseRepo, getOldersOrderWithLock, args, fieldsPointer)
+	return order, errors.Wrap(err, "query one")
+
 }
 
 const getStaleOrdersSQL = `
@@ -74,27 +71,11 @@ const getStaleOrdersSQL = `
 func (r *AccrualRepository) GetStaleOrders(
 	ctx context.Context, threshold time.Time, statuses ...order.Status,
 ) ([]models.Order, error) {
-	rows, err := r.query(ctx, getStaleOrdersSQL, pgx.NamedArgs{"statuses": statuses, "threshold": threshold})
-	if err != nil {
-		return nil, errors.Wrap(err, "query")
-	}
-	defer rows.Close()
+	args := pgx.NamedArgs{"statuses": statuses, "threshold": threshold}
+	fieldsPointer := func(o *models.Order) []any { return o.ScanFields() }
 
-	var orders []models.Order
-	for rows.Next() {
-		var order models.Order
-		if err := rows.Scan(order.ScanFields()...); err != nil {
-			return nil, errors.Wrap(err, "scan order")
-		}
-
-		orders = append(orders, order)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "iteration error")
-	}
-
-	return orders, nil
+	orders, err := queryMany(ctx, r.baseRepo, getStaleOrdersSQL, args, fieldsPointer)
+	return orders, errors.Wrap(err, "query many")
 }
 
 func (r *AccrualRepository) DoTx(ctx context.Context, fn func(*AccrualRepository) error) error {

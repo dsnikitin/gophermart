@@ -195,7 +195,8 @@ func TestUserHandler_UploadOrder(t *testing.T) {
 			req := httptest.NewRequest(test.method, "/api/user/orders", bytes.NewBufferString(test.orderNumber))
 			req.Header.Add("Content-Type", "text/plain")
 			if test.userLogin != "" {
-				req.Header.Set("x-user-login", test.userLogin)
+				ctx := context.WithValue(req.Context(), "x-user-login", test.userLogin)
+				req = req.WithContext(ctx)
 			}
 
 			recorder := httptest.NewRecorder()
@@ -323,7 +324,8 @@ func TestUserHandler_GetOrders(t *testing.T) {
 
 			req := httptest.NewRequest(test.method, "/api/user/orders", nil)
 			if test.userLogin != "" {
-				req.Header.Set("x-user-login", test.userLogin)
+				ctx := context.WithValue(req.Context(), "x-user-login", test.userLogin)
+				req = req.WithContext(ctx)
 			}
 			recorder := httptest.NewRecorder()
 

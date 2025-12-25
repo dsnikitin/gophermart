@@ -2,13 +2,11 @@ package handler
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"net/http"
 
 	"github.com/dsnikitin/gophermart/internal/models"
 	"github.com/dsnikitin/gophermart/internal/pkg/errx"
-	"github.com/dsnikitin/gophermart/internal/pkg/logger"
 	"github.com/pkg/errors"
 )
 
@@ -31,13 +29,15 @@ func NewOrderHandler(order OrderService, accrual AccrualService) *OrderHandler {
 }
 
 func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
-	login := r.Header.Get("x-user-login")
+	login, err := getLogin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errx.ErrInternalServer, "error", err.Error())
+		return
+	}
 
 	numberBytes, err := io.ReadAll(r.Body)
 	if err != nil {
-		err = errors.Wrap(err, "read all")
-		logger.Log.Errorw("Failed to read create order request body", "error", err.Error())
-		http.Error(w, errx.ErrInternalServer.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -56,11 +56,9 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, errx.ErrAlreadyExists):
 			w.WriteHeader(http.StatusConflict)
 		case errors.Is(err, errx.ErrInvalidOrderNumber):
-			logger.Log.Infow("Failed to create order", "user", login, "number", number, "error", err.Error())
-			http.Error(w, errx.ErrInvalidOrderNumber.Error(), http.StatusUnprocessableEntity)
+			writeError(w, http.StatusUnprocessableEntity, errx.ErrInvalidOrderNumber, "user", login, "number", number, "error", err.Error())
 		default:
-			logger.Log.Errorw("Failed to create order", "user", login, "number", number, "error", err.Error())
-			http.Error(w, errx.ErrInternalServer.Error(), http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, errx.ErrInternalServer, "user", login, "number", number, "error", err.Error())
 		}
 
 		return
@@ -72,13 +70,16 @@ func (h *OrderHandler) UploadOrder(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
-	login := r.Header.Get("x-user-login")
+	login, err := getLogin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errx.ErrInternalServer, "error", err.Error())
+		return
+	}
 
 	orders, err := h.order.GetOrders(r.Context(), login)
 	if err != nil {
 		err = errors.Wrap(err, "get orders")
-		logger.Log.Errorw("Failed to get orders", "user", login, "error", err.Error())
-		http.Error(w, errx.ErrInternalServer.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, errx.ErrInternalServer, "user", login, "error", err.Error())
 		return
 	}
 
@@ -87,11 +88,5 @@ func (h *OrderHandler) GetOrders(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err = json.NewEncoder(w).Encode(orders); err != nil {
-		err = errors.Wrap(err, "encode")
-		logger.Log.Errorw("Failed to encode user orders response", "error", err.Error())
-	}
+	writeJSON(w, http.StatusOK, orders)
 }

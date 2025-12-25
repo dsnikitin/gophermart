@@ -7,7 +7,6 @@ import (
 
 	"github.com/dsnikitin/gophermart/internal/models"
 	"github.com/dsnikitin/gophermart/internal/pkg/errx"
-	"github.com/dsnikitin/gophermart/internal/pkg/logger"
 	"github.com/pkg/errors"
 )
 
@@ -26,33 +25,32 @@ func NewBalanceHandler(service BalanceService) *BalanceHandler {
 }
 
 func (h *BalanceHandler) GetBalance(w http.ResponseWriter, r *http.Request) {
-	login := r.Header.Get("x-user-login")
-
-	balance, err := h.service.GetBalance(r.Context(), login)
+	login, err := getLogin(r.Context())
 	if err != nil {
-		err = errors.Wrap(err, "get balance")
-		logger.Log.Errorw("Failed to get balance", "user", login, "error", err.Error())
-		http.Error(w, errx.ErrInternalServer.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, errx.ErrInternalServer, "error", err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(balance); err != nil {
-		err = errors.Wrap(err, "encode")
-		logger.Log.Errorw("Failed to encode get balance response", "error", err.Error())
+	balance, err := h.service.GetBalance(r.Context(), login)
+	if err != nil {
+		err := errors.Wrap(err, "get balance")
+		writeError(w, http.StatusInternalServerError, errx.ErrInternalServer, "user", login, "error", err.Error())
+		return
 	}
+
+	writeJSON(w, http.StatusOK, balance)
 }
 
 func (h *BalanceHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
-	login := r.Header.Get("x-user-login")
+	login, err := getLogin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errx.ErrInternalServer, "error", err.Error())
+		return
+	}
 
 	var req models.WithdrawRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		err = errors.Wrap(err, "decode")
-		logger.Log.Errorw("Failed to read withdraw request body", "error", err.Error())
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -68,11 +66,9 @@ func (h *BalanceHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 		case errors.Is(err, errx.ErrInsufficientFunds):
 			w.WriteHeader(http.StatusPaymentRequired)
 		case errors.Is(err, errx.ErrInvalidOrderNumber):
-			logger.Log.Infow("Failed to withdraw", "user", login, "request", req, "error", err.Error())
-			http.Error(w, errx.ErrInvalidOrderNumber.Error(), http.StatusUnprocessableEntity)
+			writeError(w, http.StatusUnprocessableEntity, errx.ErrInvalidOrderNumber, "user", login, "request", req, "error", err.Error())
 		default:
-			logger.Log.Errorw("Failed to withdraw", "user", login, "request", req, "error", err.Error())
-			http.Error(w, errx.ErrInternalServer.Error(), http.StatusInternalServerError)
+			writeError(w, http.StatusInternalServerError, errx.ErrInternalServer, "user", login, "request", req, "error", err.Error())
 		}
 
 		return
@@ -82,13 +78,16 @@ func (h *BalanceHandler) Withdraw(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *BalanceHandler) GetWithdrawals(w http.ResponseWriter, r *http.Request) {
-	login := r.Header.Get("x-user-login")
+	login, err := getLogin(r.Context())
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, errx.ErrInternalServer, "error", err.Error())
+		return
+	}
 
 	withdrawals, err := h.service.GetWithdrawals(r.Context(), login)
 	if err != nil {
 		err := errors.Wrap(err, "get withdrawals")
-		logger.Log.Errorw("Failed to get withdrawals", "user", login, "error", err.Error())
-		http.Error(w, errx.ErrInternalServer.Error(), http.StatusInternalServerError)
+		writeError(w, http.StatusInternalServerError, errx.ErrInternalServer, "user", login, "error", err.Error())
 	}
 
 	if len(withdrawals) == 0 {
@@ -96,11 +95,5 @@ func (h *BalanceHandler) GetWithdrawals(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(withdrawals); err != nil {
-		err = errors.Wrap(err, "encode")
-		logger.Log.Errorw("Failed to encode get withdrawals response", "error", err.Error())
-	}
+	writeJSON(w, http.StatusOK, withdrawals)
 }

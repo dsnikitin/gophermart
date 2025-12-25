@@ -7,8 +7,8 @@ import (
 )
 
 type Config struct {
-	Lvl          string `env:"LOG_LEVEL"`
-	IsProduction bool   `env:"LOG_IS_PROD"`
+	Lvl          string `env:"LEVEL"`
+	IsProduction bool   `env:"IS_PRODUCTION"`
 }
 
 var Log = zap.Must(zap.NewDevelopment()).Sugar()

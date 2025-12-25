@@ -13,11 +13,11 @@ import (
 )
 
 type Config struct {
-	ServerAddr        string `env:"RUN_ADDRESS"`
-	AccrualSystemAddr string `env:"ACCRUAL_SYSTEM_ADDRESS"`
-	DB                *db.Config
-	Log               *logger.Config
-	Auth              *auth.Config
+	ServerAddr        string         `env:"RUN_ADDRESS"`
+	AccrualSystemAddr string         `env:"ACCRUAL_SYSTEM_ADDRESS"`
+	DB                *db.Config     `envPrefix:"DATABASE_"`
+	Log               *logger.Config `envPrefix:"LOG_"`
+	Auth              *auth.Config   `envPrefix:"AUTH_"`
 }
 
 func New() (*Config, error) {
@@ -39,18 +39,6 @@ func New() (*Config, error) {
 
 	if err := env.Parse(cfg); err != nil {
 		return nil, errors.Wrap(err, "parse env")
-	}
-
-	if err := env.Parse(cfg.DB); err != nil {
-		return nil, errors.Wrap(err, "parse db env")
-	}
-
-	if err := env.Parse(cfg.Log); err != nil {
-		return nil, errors.Wrap(err, "parse log env")
-	}
-
-	if err := env.Parse(cfg.Auth); err != nil {
-		return nil, errors.Wrap(err, "parse auth env")
 	}
 
 	return cfg, nil

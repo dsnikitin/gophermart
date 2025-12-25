@@ -14,21 +14,21 @@ import (
 func main() {
 	cfg, err := config.New()
 	if err != nil {
-		logger.Log.Fatalw("Failed to init config", "error", err)
+		logger.Log.Fatalw("Failed to init config", "error", err.Error())
 	}
 
 	if err = logger.Setup(cfg.Log); err != nil {
-		logger.Log.Fatalw("Failed to setup logger", "error", err)
+		logger.Log.Fatalw("Failed to setup logger", "error", err.Error())
 	}
 
 	database, err := db.Connect(cfg.DB)
 	if err != nil {
-		logger.Log.Fatalw("Failed to connect to db", "error", err)
+		logger.Log.Fatalw("Failed to connect to db", "error", err.Error())
 	}
 	defer database.Close()
 
 	if err := db.ApplyMigrations(cfg.DB); err != nil {
-		logger.Log.Fatalw("Failed to apply migrations", "error", err)
+		logger.Log.Fatalw("Failed to apply migrations", "error", err.Error())
 	}
 
 	application := app.New(cfg, database)

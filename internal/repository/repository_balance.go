@@ -33,14 +33,11 @@ const getBalanceSQL = `
 `
 
 func (r *BalanceRepository) GetBalance(ctx context.Context, login string) (models.Balance, error) {
-	row := r.queryRow(ctx, getBalanceSQL, pgx.NamedArgs{"login": login})
+	args := pgx.NamedArgs{"login": login}
+	fieldsPointer := func(b *models.Balance) []any { return b.ScanFields() }
 
-	var balance models.Balance
-	if err := row.Scan(balance.ScanFields()...); err != nil {
-		return models.Balance{}, errors.Wrap(err, "scan balance")
-	}
-
-	return balance, nil
+	balance, err := queryOne(ctx, r.baseRepo, getBalanceSQL, args, fieldsPointer)
+	return balance, errors.Wrap(err, "query one")
 }
 
 const createWithdrawalSQL = `
@@ -65,27 +62,11 @@ const getWithdrawalsSQL = `
 `
 
 func (r *BalanceRepository) GetWithdrawals(ctx context.Context, login string) ([]models.Withdrawal, error) {
-	rows, err := r.query(ctx, getWithdrawalsSQL, pgx.NamedArgs{"login": login})
-	if err != nil {
-		return nil, errors.Wrap(err, "query")
-	}
-	defer rows.Close()
+	args := pgx.NamedArgs{"login": login}
+	fieldsPointer := func(o *models.Withdrawal) []any { return o.ScanFields() }
 
-	var withdrawals []models.Withdrawal
-	for rows.Next() {
-		var w models.Withdrawal
-		if err := rows.Scan(w.ScanFields()...); err != nil {
-			return nil, errors.Wrap(err, "scan withdrawal")
-		}
-
-		withdrawals = append(withdrawals, w)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "iteration error")
-	}
-
-	return withdrawals, nil
+	withdrawals, err := queryMany(ctx, r.baseRepo, getWithdrawalsSQL, args, fieldsPointer)
+	return withdrawals, errors.Wrap(err, "query many")
 }
 
 const advisoryLockSQL = `

@@ -4,11 +4,8 @@ import (
 	"context"
 
 	"github.com/dsnikitin/gophermart/internal/models"
-	"github.com/dsnikitin/gophermart/internal/pkg/errx"
 
-	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
 )
@@ -27,15 +24,12 @@ const createUserSQL = `
 `
 
 func (r *UserRepository) CreateUser(ctx context.Context, user models.User) error {
-	_, err := r.exec(ctx, createUserSQL, pgx.NamedArgs{"login": user.Login, "password": user.Password})
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-			return errx.ErrAlreadyExists
-		}
-	}
+	_, err := r.exec(ctx, createUserSQL, pgx.NamedArgs{
+		"login":    user.Login,
+		"password": user.Password,
+	})
 
-	return nil
+	return errors.Wrap(err, "exec")
 }
 
 const getUserSQL = `
@@ -45,16 +39,9 @@ const getUserSQL = `
 `
 
 func (r *UserRepository) GetUser(ctx context.Context, login string) (models.User, error) {
-	row := r.queryRow(ctx, getUserSQL, pgx.NamedArgs{"login": login})
+	args := pgx.NamedArgs{"login": login}
+	fieldsPointer := func(u *models.User) []any { return u.ScanFields() }
 
-	var user models.User
-	if err := row.Scan(user.ScanFields()...); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return models.User{}, errx.ErrNotFound
-		}
-
-		return models.User{}, errors.Wrap(err, "scan user")
-	}
-
-	return user, nil
+	user, err := queryOne(ctx, r.baseRepo, getUserSQL, args, fieldsPointer)
+	return user, errors.Wrap(err, "query one")
 }

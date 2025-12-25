@@ -8,9 +8,9 @@ import (
 )
 
 type Config struct {
-	SigningKey string        `env:"AUTH_SECRET_KEY"`
-	TokenExp   time.Duration `env:"AUTH_TOKEN_TTL"`
-	CookieName string        `env:"AUTH_COOKIE_NAME"`
+	SecretKey  string        `env:"SECRET_KEY"`
+	TokenExp   time.Duration `env:"TOKEN_TTL"`
+	CookieName string        `env:"COOKIE_NAME"`
 }
 
 type Claims struct {
@@ -26,7 +26,7 @@ func CreateToken(cfg *Config, login string) (string, error) {
 		Login: login,
 	})
 
-	tokenStr, err := token.SignedString([]byte(cfg.SigningKey))
+	tokenStr, err := token.SignedString([]byte(cfg.SecretKey))
 	if err != nil {
 		return "", err
 	}
@@ -46,7 +46,7 @@ func ParseToken(cfg *Config, tokenStr string) (*Claims, error) {
 				return nil, errors.Errorf("unexpected signing method: %v", t.Header["alg"])
 			}
 
-			return []byte(cfg.SigningKey), nil
+			return []byte(cfg.SecretKey), nil
 		})
 	if err != nil {
 		return nil, errors.Wrap(err, "parse jwt with claims")

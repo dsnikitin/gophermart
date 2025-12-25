@@ -15,6 +15,7 @@ import (
 	"github.com/dsnikitin/gophermart/internal/models"
 	"github.com/dsnikitin/gophermart/internal/pkg/auth"
 	"github.com/dsnikitin/gophermart/internal/pkg/errx"
+	"github.com/dsnikitin/gophermart/internal/pkg/logger"
 	"github.com/go-chi/chi/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -49,10 +50,11 @@ func TestUserHandler_Register(t *testing.T) {
 
 	cfg := &config.Config{
 		Auth: &auth.Config{
-			SigningKey: "testkey",
+			SecretKey:  "testkey",
 			TokenExp:   time.Hour,
 			CookieName: "auth_token",
 		},
+		Log: &logger.Config{},
 	}
 
 	s := new(MockUserService)
@@ -176,10 +178,11 @@ func TestUserHandler_Login(t *testing.T) {
 
 	cfg := &config.Config{
 		Auth: &auth.Config{
-			SigningKey: "testkey",
+			SecretKey:  "testkey",
 			TokenExp:   time.Hour,
 			CookieName: "auth_token",
 		},
+		Log: &logger.Config{},
 	}
 
 	s := new(MockUserService)

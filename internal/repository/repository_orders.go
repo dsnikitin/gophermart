@@ -4,10 +4,7 @@ import (
 	"context"
 
 	"github.com/dsnikitin/gophermart/internal/models"
-	"github.com/dsnikitin/gophermart/internal/pkg/errx"
-	"github.com/jackc/pgerrcode"
 	"github.com/jackc/pgx/v5"
-	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/pkg/errors"
 )
@@ -26,15 +23,12 @@ const uploadOrderSQL = `
 `
 
 func (r *OrderRepository) UploadOrder(ctx context.Context, login, number string) error {
-	_, err := r.exec(ctx, uploadOrderSQL, pgx.NamedArgs{"number": number, "login": login})
-	if err != nil {
-		var pgErr *pgconn.PgError
-		if errors.As(err, &pgErr) && pgErr.Code == pgerrcode.UniqueViolation {
-			return errx.ErrAlreadyExists
-		}
-	}
+	_, err := r.exec(ctx, uploadOrderSQL, pgx.NamedArgs{
+		"number": number,
+		"login":  login,
+	})
 
-	return nil
+	return errors.Wrap(err, "exec")
 }
 
 const getOrderSQL = `
@@ -44,18 +38,10 @@ const getOrderSQL = `
 `
 
 func (r *OrderRepository) GetOrder(ctx context.Context, number string) (models.Order, error) {
-	row := r.queryRow(ctx, getOrderSQL, pgx.NamedArgs{"number": number})
+	fieldsPointer := func(o *models.Order) []any { return o.ScanFields() }
 
-	var order models.Order
-	if err := row.Scan(order.ScanFields()...); err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return models.Order{}, errx.ErrNotFound
-		}
-
-		return models.Order{}, errors.Wrap(err, "scan order")
-	}
-
-	return order, nil
+	order, err := queryOne(ctx, r.baseRepo, getOrderSQL, pgx.NamedArgs{"number": number}, fieldsPointer)
+	return order, errors.Wrap(err, "query one")
 }
 
 const getOrdersSQL = `
@@ -66,25 +52,9 @@ const getOrdersSQL = `
 `
 
 func (r *OrderRepository) GetOrders(ctx context.Context, login string) ([]models.Order, error) {
-	rows, err := r.query(ctx, getOrdersSQL, pgx.NamedArgs{"login": login})
-	if err != nil {
-		return nil, errors.Wrap(err, "query")
-	}
-	defer rows.Close()
+	args := pgx.NamedArgs{"login": login}
+	fieldsPointer := func(o *models.Order) []any { return o.ScanFields() }
 
-	var orders []models.Order
-	for rows.Next() {
-		var order models.Order
-		if err := rows.Scan(order.ScanFields()...); err != nil {
-			return nil, errors.Wrap(err, "scan order")
-		}
-
-		orders = append(orders, order)
-	}
-
-	if err = rows.Err(); err != nil {
-		return nil, errors.Wrap(err, "iteration error")
-	}
-
-	return orders, nil
+	orders, err := queryMany(ctx, r.baseRepo, getOrdersSQL, args, fieldsPointer)
+	return orders, errors.Wrap(err, "query many")
 }
