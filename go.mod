@@ -3,7 +3,6 @@ module github.com/dsnikitin/gophermart
 go 1.24.2
 
 require (
-	github.com/caarlos0/env v3.5.0+incompatible
 	github.com/pkg/errors v0.9.1
 	github.com/stretchr/testify v1.10.0
 )
@@ -29,6 +28,7 @@ require (
 )
 
 require (
+	github.com/caarlos0/env/v11 v11.3.1
 	github.com/go-chi/chi/v5 v5.2.3
 	github.com/go-ozzo/ozzo-validation/v4 v4.3.0
 	github.com/golang-jwt/jwt/v4 v4.5.2

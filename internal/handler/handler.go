@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/dsnikitin/gophermart/internal/config"
+	"github.com/dsnikitin/gophermart/internal/models"
 	"github.com/dsnikitin/gophermart/internal/pkg/logger"
 	"github.com/pkg/errors"
 )
@@ -32,7 +33,7 @@ func New(cfg *config.Config, s *Service) *Handler {
 }
 
 func getLogin(ctx context.Context) (string, error) {
-	ctxValue := ctx.Value("x-user-login")
+	ctxValue := ctx.Value(models.LoginKey{})
 	if ctxValue == nil {
 		return "", errors.New("login not found in context")
 	}

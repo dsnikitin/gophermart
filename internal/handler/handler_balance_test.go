@@ -102,7 +102,7 @@ func TestBalanceHandler_GetBalance(t *testing.T) {
 
 			req := httptest.NewRequest(test.method, "/api/user/balance", nil)
 			if test.userLogin != "" {
-				ctx := context.WithValue(req.Context(), "x-user-login", test.userLogin)
+				ctx := context.WithValue(req.Context(), models.LoginKey{}, test.userLogin)
 				req = req.WithContext(ctx)
 			}
 			recorder := httptest.NewRecorder()
@@ -288,7 +288,7 @@ func TestBalanceHandler_Withdraw(t *testing.T) {
 			req := httptest.NewRequest(test.method, "/api/user/balance/withdraw", bytes.NewBuffer(body))
 			req.Header.Add("Content-Type", "application/json")
 			if test.userLogin != "" {
-				ctx := context.WithValue(req.Context(), "x-user-login", test.userLogin)
+				ctx := context.WithValue(req.Context(), models.LoginKey{}, test.userLogin)
 				req = req.WithContext(ctx)
 			}
 
@@ -414,7 +414,7 @@ func TestBalanceHandler_GetWithdrawals(t *testing.T) {
 
 			req := httptest.NewRequest(test.method, "/api/user/withdrawals", nil)
 			if test.userLogin != "" {
-				ctx := context.WithValue(req.Context(), "x-user-login", test.userLogin)
+				ctx := context.WithValue(req.Context(), models.LoginKey{}, test.userLogin)
 				req = req.WithContext(ctx)
 			}
 

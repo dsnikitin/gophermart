@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/dsnikitin/gophermart/internal/models"
 	"github.com/dsnikitin/gophermart/internal/pkg/auth"
 	"github.com/dsnikitin/gophermart/internal/pkg/logger"
 )
@@ -31,7 +32,7 @@ func Auth(cfg *auth.Config) func(h http.Handler) http.Handler {
 				return
 			}
 
-			ctx := context.WithValue(r.Context(), "x-user-login", claims.Login)
+			ctx := context.WithValue(r.Context(), models.LoginKey{}, claims.Login)
 			h.ServeHTTP(w, r.WithContext(ctx))
 		})
 	}

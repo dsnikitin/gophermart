@@ -8,7 +8,7 @@ import (
 	"github.com/dsnikitin/gophermart/internal/pkg/db"
 	"github.com/dsnikitin/gophermart/internal/pkg/logger"
 
-	"github.com/caarlos0/env"
+	"github.com/caarlos0/env/v11"
 	"github.com/pkg/errors"
 )
 

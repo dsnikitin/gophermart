@@ -6,6 +6,8 @@ import (
 	validation "github.com/go-ozzo/ozzo-validation/v4"
 )
 
+type LoginKey struct{}
+
 type User struct {
 	Login    string `json:"login"`
 	Password string `json:"password"`
