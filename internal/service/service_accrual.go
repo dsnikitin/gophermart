@@ -5,15 +5,15 @@ import (
 	"encoding/json"
 	"math/rand"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/dsnikitin/gophermart/internal/models"
-	accrual_status "github.com/dsnikitin/gophermart/internal/pkg/consts/accrual"
-	order_status "github.com/dsnikitin/gophermart/internal/pkg/consts/order"
+	accrualstatus "github.com/dsnikitin/gophermart/internal/pkg/consts/accrual"
+	orderstatus "github.com/dsnikitin/gophermart/internal/pkg/consts/order"
 	"github.com/dsnikitin/gophermart/internal/pkg/errx"
 	"github.com/dsnikitin/gophermart/internal/pkg/logger"
 	"github.com/pkg/errors"
+	"golang.org/x/sync/errgroup"
 )
 
 const restartingStaleOrdersInterval time.Duration = time.Minute * 5
@@ -21,9 +21,9 @@ const handlersCount int = 100
 const attempts int = 5
 
 type AccrualRepository interface {
-	GetOldestOrderWithLock(ctx context.Context, status order_status.Status) (models.Order, error)
-	UpdateOrder(ctx context.Context, number string, status order_status.Status, accrual *float64) error
-	GetStaleOrders(ctx context.Context, threshold time.Time, statuses ...order_status.Status) ([]models.Order, error)
+	GetOldestOrderWithLock(ctx context.Context, status orderstatus.Status) (models.Order, error)
+	UpdateOrder(ctx context.Context, number string, status orderstatus.Status, accrual *float64) error
+	GetStaleOrders(ctx context.Context, threshold time.Time, status orderstatus.Status) ([]models.Order, error)
 }
 
 type AccrualTxProvider interface {
@@ -37,71 +37,62 @@ type AccrualService struct {
 	r  AccrualRepository
 	tx AccrualTxProvider
 
-	wakeUpCh chan struct{}
+	startCh  chan struct{}
 	ordersCh chan models.Order
 
-	wg     sync.WaitGroup
-	stopCh chan struct{}
+	ctx    context.Context
+	cancel context.CancelFunc
+	eg     *errgroup.Group
 }
 
 func NewAccrualService(accrualSystemAddr string, r AccrualRepository, tx AccrualTxProvider) *AccrualService {
+	ctx, cancel := context.WithCancel(context.Background())
+
 	s := &AccrualService{
 		accrualSystemAddr: accrualSystemAddr,
 		client:            initClient(),
 		r:                 r,
 		tx:                tx,
-		wakeUpCh:          make(chan struct{}, 1),
+		startCh:           make(chan struct{}, 1),
 		ordersCh:          make(chan models.Order),
-		stopCh:            make(chan struct{}),
+		eg:                &errgroup.Group{},
+		ctx:               ctx,
+		cancel:            cancel,
 	}
 
 	for range handlersCount {
-		s.wg.Add(1)
-		go s.ordersHandler()
+		s.eg.Go(s.ordersHandler)
 	}
 
-	s.wg.Add(1)
-	go s.ordersProducer()
+	s.eg.Go(s.ordersProducer)
+	s.eg.Go(s.staleOrdersProducer)
 
-	s.wg.Add(1)
-	go s.staleOrdersProducer()
-
+	s.NotifyOrderUploaded()
 	return s
 }
 
 func (s *AccrualService) NotifyOrderUploaded() {
 	select {
-	case s.wakeUpCh <- struct{}{}:
+	case s.startCh <- struct{}{}:
 	default:
 	}
 }
 
 func (s *AccrualService) Stop() {
-	close(s.stopCh)
-	s.wg.Wait()
-
+	s.cancel()
+	s.eg.Wait()
 	logger.Log.Info("Accrual service stopped")
 }
 
-func (s *AccrualService) ordersProducer() {
-	defer s.wg.Done()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+func (s *AccrualService) ordersProducer() error {
 	for {
 		select {
-		case <-s.stopCh:
-			return
-		case <-s.wakeUpCh:
+		case <-s.ctx.Done():
+			return nil
+		case <-s.startCh:
 			for {
-				if err := s.produceOrder(ctx); err != nil {
+				if err := s.produceOrder(); err != nil {
 					if errors.Is(err, errx.ErrNotFound) {
-						break
-					}
-
-					if errors.Is(err, errx.ErrAllWorkersBusy) {
-						logger.Log.Infow("All handlers are busy for proccessing next order")
 						break
 					}
 
@@ -113,14 +104,9 @@ func (s *AccrualService) ordersProducer() {
 	}
 }
 
-func (s *AccrualService) staleOrdersProducer() {
-	defer s.wg.Done()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+func (s *AccrualService) staleOrdersProducer() error {
 	logger.Log.Info("Restarting stale orders...")
-	if err := s.restartStaleOrders(ctx, time.Now().UTC()); err != nil {
+	if err := s.restartStaleOrders(time.Now().UTC()); err != nil {
 		err = errors.Wrap(err, "restart stale orders")
 		logger.Log.Errorw("Failed to restart stale orders on start", "error", err.Error())
 	}
@@ -130,10 +116,10 @@ func (s *AccrualService) staleOrdersProducer() {
 
 	for {
 		select {
-		case <-s.stopCh:
-			return
+		case <-s.ctx.Done():
+			return nil
 		case <-ticker.C:
-			err := s.restartStaleOrders(ctx, time.Now().UTC().Add(-restartingStaleOrdersInterval))
+			err := s.restartStaleOrders(time.Now().UTC().Add(-restartingStaleOrdersInterval))
 			if err != nil {
 				err = errors.Wrap(err, "restart stale orders")
 				logger.Log.Errorw("Failed to restart stale orders", "error", err.Error())
@@ -142,22 +128,17 @@ func (s *AccrualService) staleOrdersProducer() {
 	}
 }
 
-func (s *AccrualService) ordersHandler() {
-	defer s.wg.Done()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
+func (s *AccrualService) ordersHandler() error {
 	for {
 		select {
-		case <-s.stopCh:
-			return
+		case <-s.ctx.Done():
+			return nil
 		case order, ok := <-s.ordersCh:
 			if !ok {
-				return
+				return nil
 			}
 
-			if err := s.handleOrder(ctx, order); err != nil {
+			if err := s.handleOrder(order); err != nil {
 				if errors.Is(err, errx.ErrUnregisteredOrder) {
 					logger.Log.Warnw("Order is not registered in accrual system", "orderNumber", order.Number)
 					break
@@ -168,72 +149,56 @@ func (s *AccrualService) ordersHandler() {
 			}
 
 			select {
-			case s.wakeUpCh <- struct{}{}:
+			case s.startCh <- struct{}{}:
 			default:
 			}
 		}
 	}
 }
 
-func (s *AccrualService) produceOrder(ctx context.Context) error {
-	err := s.tx.Do(ctx, func(rTx AccrualRepository) error {
-		order, err := rTx.GetOldestOrderWithLock(ctx, order_status.New)
+func (s *AccrualService) produceOrder() error {
+	err := s.tx.Do(s.ctx, func(rTx AccrualRepository) error {
+		order, err := rTx.GetOldestOrderWithLock(s.ctx, orderstatus.New)
 		if err != nil {
 			return errors.Wrap(err, "get olders order with lock")
 		}
 
-		if err := rTx.UpdateOrder(ctx, order.Number, order_status.Processing, nil); err != nil {
+		if err := rTx.UpdateOrder(s.ctx, order.Number, orderstatus.Processing, nil); err != nil {
 			return errors.Wrap(err, "update order")
 		}
 
-		for range attempts {
-			select {
-			case s.ordersCh <- order:
-				return nil
-			default:
-				time.Sleep(time.Millisecond * 500)
-			}
+		if ok := s.sendToChan(order); !ok {
+			return errx.ErrAllWorkersBusy
 		}
 
-		return errx.ErrAllWorkersBusy
+		return nil
 	})
 
 	return errors.Wrap(err, "do tx")
 }
 
-func (s *AccrualService) restartStaleOrders(ctx context.Context, stalingThreshold time.Time) error {
-	orders, err := s.r.GetStaleOrders(ctx, stalingThreshold, order_status.New, order_status.Processing)
+func (s *AccrualService) restartStaleOrders(stalingThreshold time.Time) error {
+	orders, err := s.r.GetStaleOrders(s.ctx, stalingThreshold, orderstatus.Processing)
 	if err != nil {
 		return errors.Wrap(err, "get stale orders")
 	}
 
 	for _, order := range orders {
-		if order.Status == order_status.New {
-			s.NotifyOrderUploaded()
-			continue
-		}
-
-	attempts_loop:
-		for range attempts {
-			select {
-			case s.ordersCh <- order:
-				break attempts_loop
-			default:
-				time.Sleep(time.Millisecond * 500)
-			}
+		if ok := s.sendToChan(order); !ok {
+			return errx.ErrAllWorkersBusy
 		}
 	}
 
 	return nil
 }
 
-func (s *AccrualService) handleOrder(ctx context.Context, order models.Order) error {
+func (s *AccrualService) handleOrder(order models.Order) error {
 	for range attempts {
 		select {
-		case <-s.stopCh:
+		case <-s.ctx.Done():
 			return nil
 		default:
-			accrual, err := s.getAccrual(ctx, order.Number)
+			accrual, err := s.getAccrual(order.Number)
 			if err != nil {
 				if errors.Is(err, errx.ErrToManyRequests) {
 					time.Sleep(time.Second * time.Duration(rand.Intn(10)))
@@ -244,11 +209,11 @@ func (s *AccrualService) handleOrder(ctx context.Context, order models.Order) er
 			}
 
 			switch accrual.Status {
-			case accrual_status.Invalid:
-				err := s.r.UpdateOrder(ctx, order.Number, order_status.Invalid, nil)
+			case accrualstatus.Invalid:
+				err := s.r.UpdateOrder(s.ctx, order.Number, orderstatus.Invalid, nil)
 				return errors.Wrap(err, "update order status to invalid")
-			case accrual_status.Processed:
-				err := s.r.UpdateOrder(ctx, order.Number, order_status.Processed, &accrual.Accrual)
+			case accrualstatus.Processed:
+				err := s.r.UpdateOrder(s.ctx, order.Number, orderstatus.Processed, &accrual.Accrual)
 				return errors.Wrap(err, "update acrrual and order status to processed")
 			}
 		}
@@ -257,9 +222,9 @@ func (s *AccrualService) handleOrder(ctx context.Context, order models.Order) er
 	return nil
 }
 
-func (s *AccrualService) getAccrual(ctx context.Context, number string) (models.Accrual, error) {
+func (s *AccrualService) getAccrual(number string) (models.Accrual, error) {
 	endpoint := s.accrualSystemAddr + "/api/orders/" + number
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	req, err := http.NewRequestWithContext(s.ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
 		return models.Accrual{}, errors.Wrap(err, "new http request")
 	}
@@ -296,4 +261,17 @@ func initClient() *http.Client {
 			ForceAttemptHTTP2:   true,
 		},
 	}
+}
+
+func (s *AccrualService) sendToChan(order models.Order) bool {
+	for range attempts {
+		select {
+		case s.ordersCh <- order:
+			return true
+		default:
+			time.Sleep(time.Millisecond * 500)
+		}
+	}
+
+	return false
 }

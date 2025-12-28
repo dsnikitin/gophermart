@@ -8,7 +8,7 @@ import (
 )
 
 type Config struct {
-	SecretKey  string        `env:"SECRET_KEY,required"`
+	SecretKey  string        `env:"SECRET_KEY"`
 	TokenExp   time.Duration `env:"TOKEN_TTL"`
 	CookieName string        `env:"COOKIE_NAME"`
 }

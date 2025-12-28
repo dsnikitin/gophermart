@@ -65,13 +65,13 @@ func (r *AccrualRepository) GetOldestOrderWithLock(ctx context.Context, status o
 const getStaleOrdersSQL = `
 	SELECT number, status, uploaded_at, accrual, user_login
 	FROM gophermart.orders
-	WHERE status = ANY(@statuses) AND uploaded_at <= @threshold
+	WHERE status = @status AND uploaded_at <= @threshold
 `
 
 func (r *AccrualRepository) GetStaleOrders(
-	ctx context.Context, threshold time.Time, statuses ...order.Status,
+	ctx context.Context, threshold time.Time, status order.Status,
 ) ([]models.Order, error) {
-	args := pgx.NamedArgs{"statuses": statuses, "threshold": threshold}
+	args := pgx.NamedArgs{"status": status, "threshold": threshold}
 	fieldsPointer := func(o *models.Order) []any { return o.ScanFields() }
 
 	orders, err := queryMany(ctx, r.baseRepo, getStaleOrdersSQL, args, fieldsPointer)
